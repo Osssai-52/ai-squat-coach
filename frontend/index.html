@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 스쿼트 코치</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>AI 스쿼트 코치</h1>
+    <p class="hint">측면(옆모습)이 카메라에 보이도록 서 주세요. 전신이 화면에 들어와야 합니다.</p>
+  </header>
+
+  <main>
+    <div class="video-wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div id="feedback" class="feedback hidden"></div>
+    </div>
+
+    <aside class="panel">
+      <h2>실시간 지표</h2>
+      <dl>
+        <dt>무릎 각도</dt><dd id="knee-angle">–</dd>
+        <dt>고관절 각도</dt><dd id="hip-angle">–</dd>
+        <dt>허리 기울기</dt><dd id="trunk-lean">–</dd>
+        <dt>동작 구간</dt><dd id="squat-phase">대기</dd>
+        <dt>렙 카운트</dt><dd id="rep-count">0</dd>
+      </dl>
+      <div id="status" class="status">모델 로딩 중…</div>
+    </aside>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
