@@ -15,7 +15,7 @@ const CONFIG = {
   STANDING_KNEE_ANGLE: 160, // 이 이상이면 서 있는 상태
   BOTTOM_ENTER_DELTA: 5,    // 무릎 각도가 이만큼 다시 커지면 최저점을 지난 것
   // 인식 안정화
-  MIN_VISIBILITY: 0.6,     // 핵심 관절 평균 가시성이 이 미만이면 "인식 불안정" 처리
+  MIN_VISIBILITY: 0,       // 가시성 게이트 비활성화 (v1 기준). 유령 스켈레톤이 다시 생기면 0.3~0.5로 올려서 테스트
   LANDMARK_ALPHA: 0.4,     // 랜드마크 EMA 스무딩 계수 (작을수록 부드럽고 반응 느림)
 };
 
@@ -244,19 +244,15 @@ async function loadModel() {
   const fileset = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
   );
+  // 인식 설정은 v1(첫 버전) 기준: lite 모델 + 기본 신뢰도. 이 기기에서 full 모델/신뢰도 0.6은 스켈레톤이 안 떴음
   const makeOptions = (delegate) => ({
     baseOptions: {
-      // lite → full: 떨림이 훨씬 적음. 데모 기기에서 프레임이 안 나오면 lite로 되돌릴 것
       modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
       delegate,
     },
     runningMode: "VIDEO",
     numPoses: 1,
-    // 낮으면 배경 사물을 사람으로 오인해 유령 스켈레톤이 생김
-    minPoseDetectionConfidence: 0.6,
-    minPosePresenceConfidence: 0.6,
-    minTrackingConfidence: 0.6,
   });
   try {
     landmarker = await PoseLandmarker.createFromOptions(fileset, makeOptions("GPU"));
