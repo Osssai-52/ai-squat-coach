@@ -1,5 +1,5 @@
-// AI 스쿼트 코치 — 1일차 뼈대
-// 카메라 → MediaPipe 포즈 추출 → 각도 계산 → 규칙 기반 판정 v0 → 화면 피드백
+// AI 스쿼트 코치
+// 화면 흐름: 시작 → 운동(카메라 → MediaPipe → 각도 → 최저점 판정 → 피드백) → 리포트
 import {
   PoseLandmarker,
   FilesetResolver,
@@ -13,12 +13,18 @@ const CONFIG = {
   TRUNK_LEAN_MAX: 50,      // 최저점에서 허리 기울기(수직 기준 도)가 이보다 크면 "허리 굽음"
   // 동작 구간 판정
   STANDING_KNEE_ANGLE: 160, // 이 이상이면 서 있는 상태
-  BOTTOM_ENTER_DELTA: 5,    // 무릎 각도 변화가 이 이하로 안정되면 최저점 후보
-  // 피드백 스무딩: 같은 판정이 연속 N프레임 이상일 때만 표시
-  SMOOTHING_FRAMES: 5,
+  BOTTOM_ENTER_DELTA: 5,    // 무릎 각도가 이만큼 다시 커지면 최저점을 지난 것
   // 인식 안정화
   MIN_VISIBILITY: 0.6,     // 핵심 관절 평균 가시성이 이 미만이면 "인식 불안정" 처리
   LANDMARK_ALPHA: 0.4,     // 랜드마크 EMA 스무딩 계수 (작을수록 부드럽고 반응 느림)
+};
+
+// 클래스 메타 (ml/train.py의 클래스 코드와 동일하게 유지)
+const CLASSES = {
+  good:  { name: "정상",      msg: "좋은 자세!",          color: "var(--c-good)" },
+  depth: { name: "깊이 부족", msg: "더 깊이 앉으세요!",    color: "var(--c-depth)" },
+  back:  { name: "허리 굽음", msg: "허리를 세우세요!",     color: "var(--c-back)" },
+  knee:  { name: "무릎 모임", msg: "무릎을 벌려 주세요!",  color: "var(--c-knee)" },
 };
 
 // MediaPipe 랜드마크 인덱스 (33개 중 사용하는 것)
@@ -30,14 +36,31 @@ const LM = {
 };
 
 // ---------- DOM ----------
-const video = document.getElementById("video");
-const canvas = document.getElementById("overlay");
-const ctx = canvas.getContext("2d");
 const $ = (id) => document.getElementById(id);
+const video = $("video");
+const canvas = $("overlay");
+const ctx = canvas.getContext("2d");
 const ui = {
+  screens: { start: $("screen-start"), workout: $("screen-workout"), report: $("screen-report") },
+  startBtn: $("btn-start"), startStatus: $("start-status"),
   knee: $("knee-angle"), hip: $("hip-angle"), trunk: $("trunk-lean"),
-  phase: $("squat-phase"), reps: $("rep-count"),
+  phase: $("squat-phase"), reps: $("rep-count"), goalDisplay: $("rep-goal-display"),
+  repDots: $("rep-dots"),
   feedback: $("feedback"), status: $("status"),
+  debugPanel: $("debug-panel"),
+  reportGood: $("report-good"), reportTotal: $("report-total"), reportTopError: $("report-top-error"),
+  distBar: $("dist-bar"), distLegend: $("dist-legend"), repList: $("rep-list"),
+};
+
+function showScreen(name) {
+  for (const [k, el] of Object.entries(ui.screens)) el.classList.toggle("hidden", k !== name);
+}
+
+// ---------- 세션 상태 ----------
+const session = {
+  goalReps: 10,
+  results: [],        // 렙별 판정 결과 [{label, kneeAngle}, ...]
+  pendingResult: null, // 최저점 판정 후 렙 완료(기립)까지 보관
 };
 
 // ---------- 각도 유틸 (ml/features.py와 반드시 동일한 정의 유지) ----------
@@ -123,12 +146,21 @@ const squat = {
   reps: 0,
 };
 
+function resetSquat() {
+  squat.phase = "standing";
+  squat.prevKnee = null;
+  squat.minKneeThisRep = 999;
+  squat.bottomFeatures = null;
+  squat.reps = 0;
+}
+
 function updatePhase(f) {
   const k = f.kneeAngle;
-  if (k == null) return null;
+  if (k == null) return { bottomFeatures: null, repCompleted: false };
   const delta = squat.prevKnee == null ? 0 : k - squat.prevKnee;
   squat.prevKnee = k;
-  let bottomEvent = null;
+  let bottomFeatures = null;
+  let repCompleted = false;
 
   switch (squat.phase) {
     case "standing":
@@ -146,13 +178,14 @@ function updatePhase(f) {
       // 각도가 다시 커지기 시작하면 최저점을 지난 것
       if (delta > CONFIG.BOTTOM_ENTER_DELTA) {
         squat.phase = "ascending";
-        bottomEvent = squat.bottomFeatures; // 최저점 확정 → 이 프레임으로 판정
+        bottomFeatures = squat.bottomFeatures; // 최저점 확정 → 이 프레임으로 판정
       }
       break;
     case "ascending":
       if (k >= CONFIG.STANDING_KNEE_ANGLE) {
         squat.phase = "standing";
         squat.reps += 1;
+        repCompleted = true;
       }
       // 올라가다 다시 내려가는 경우(불완전 렙) 처리
       if (delta < -CONFIG.BOTTOM_ENTER_DELTA) {
@@ -160,27 +193,24 @@ function updatePhase(f) {
       }
       break;
   }
-  return bottomEvent;
+  return { bottomFeatures, repCompleted };
 }
 
 // ---------- 규칙 기반 판정 v0 (2일차에 ML 모델로 교체) ----------
 function classifyRuleBased(f) {
-  if (f.kneeAngle > CONFIG.DEPTH_KNEE_ANGLE) return { label: "depth", msg: "깊이 부족! 더 내려가세요" };
-  if (f.trunkLean > CONFIG.TRUNK_LEAN_MAX) return { label: "back", msg: "허리를 세우세요" };
-  return { label: "good", msg: "좋은 자세!" };
+  if (f.kneeAngle > CONFIG.DEPTH_KNEE_ANGLE) return "depth";
+  if (f.trunkLean > CONFIG.TRUNK_LEAN_MAX) return "back";
+  return "good";
 }
 
-// ---------- 피드백 표시 (스무딩) ----------
-let lastLabel = null;
-let sameCount = 0;
+// ---------- 피드백 ----------
 let feedbackTimer = null;
-
-function showFeedback(result) {
-  // 렙 단위 판정이라 최저점마다 1회 호출됨 → 스무딩은 프레임 판정으로 바꿀 때 사용
-  ui.feedback.textContent = result.msg;
-  ui.feedback.classList.toggle("ok", result.label === "good");
+function showFeedback(label) {
+  const c = CLASSES[label];
+  ui.feedback.textContent = c.msg;
+  ui.feedback.classList.toggle("ok", label === "good");
   ui.feedback.classList.remove("hidden");
-  speak(result.msg);
+  speak(c.msg);
   clearTimeout(feedbackTimer);
   feedbackTimer = setTimeout(() => ui.feedback.classList.add("hidden"), 2000);
 }
@@ -193,39 +223,58 @@ function speak(text) {
   speechSynthesis.speak(u);
 }
 
+// ---------- 렙 도트 ----------
+function initRepDots() {
+  ui.repDots.innerHTML = "";
+  for (let i = 0; i < session.goalReps; i++) ui.repDots.appendChild(document.createElement("i"));
+}
+function updateRepDot(index, label) {
+  const dot = ui.repDots.children[index];
+  if (dot) dot.className = label === "good" ? "good" : "err";
+}
+
 // ---------- 메인 루프 ----------
 let landmarker = null;
 let drawer = null;
 let lastVideoTime = -1;
+let running = false;
+let stream = null;
 
-async function init() {
+async function loadModel() {
+  const fileset = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  const makeOptions = (delegate) => ({
+    baseOptions: {
+      // lite → full: 떨림이 훨씬 적음. 데모 기기에서 프레임이 안 나오면 lite로 되돌릴 것
+      modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
+      delegate,
+    },
+    runningMode: "VIDEO",
+    numPoses: 1,
+    // 낮으면 배경 사물을 사람으로 오인해 유령 스켈레톤이 생김
+    minPoseDetectionConfidence: 0.6,
+    minPosePresenceConfidence: 0.6,
+    minTrackingConfidence: 0.6,
+  });
   try {
-    const fileset = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-    );
-    const makeOptions = (delegate) => ({
-      baseOptions: {
-        // lite → full: 떨림이 훨씬 적음. 데모 기기에서 프레임이 안 나오면 lite로 되돌릴 것
-        modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
-        delegate,
-      },
-      runningMode: "VIDEO",
-      numPoses: 1,
-      // 낮으면 배경 사물을 사람으로 오인해 유령 스켈레톤이 생김
-      minPoseDetectionConfidence: 0.6,
-      minPosePresenceConfidence: 0.6,
-      minTrackingConfidence: 0.6,
-    });
-    try {
-      landmarker = await PoseLandmarker.createFromOptions(fileset, makeOptions("GPU"));
-    } catch (gpuErr) {
-      console.warn("GPU delegate 실패, CPU로 전환:", gpuErr);
-      landmarker = await PoseLandmarker.createFromOptions(fileset, makeOptions("CPU"));
-    }
-    ui.status.textContent = "카메라 연결 중…";
+    landmarker = await PoseLandmarker.createFromOptions(fileset, makeOptions("GPU"));
+  } catch (gpuErr) {
+    console.warn("GPU delegate 실패, CPU로 전환:", gpuErr);
+    landmarker = await PoseLandmarker.createFromOptions(fileset, makeOptions("CPU"));
+  }
+}
 
-    const stream = await navigator.mediaDevices.getUserMedia({
+async function startWorkout() {
+  ui.startBtn.disabled = true;
+  try {
+    if (!landmarker) {
+      ui.startStatus.textContent = "모델 로딩 중…";
+      await loadModel();
+    }
+    ui.startStatus.textContent = "카메라 연결 중…";
+    stream = await navigator.mediaDevices.getUserMedia({
       video: { width: 1280, height: 720 },
       audio: false,
     });
@@ -234,15 +283,46 @@ async function init() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     drawer = new DrawingUtils(ctx);
+
+    // 세션 초기화
+    session.results = [];
+    session.pendingResult = null;
+    resetSquat();
+    smoothedLms = null;
+    ui.reps.textContent = "0";
+    ui.goalDisplay.textContent = ` / ${session.goalReps}`;
+    ui.phase.textContent = "준비";
+    initRepDots();
+
+    ui.startStatus.textContent = "";
+    showScreen("workout");
     ui.status.textContent = "동작 인식 중";
+    running = true;
+    lastVideoTime = -1;
     requestAnimationFrame(loop);
   } catch (err) {
-    ui.status.textContent = `오류: ${err.message}`;
+    ui.startStatus.textContent = `오류: ${err.message}`;
     console.error(err);
+  } finally {
+    ui.startBtn.disabled = false;
   }
 }
 
+function endWorkout() {
+  running = false;
+  speechSynthesis?.cancel();
+  clearTimeout(feedbackTimer);
+  ui.feedback.classList.add("hidden");
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
+  renderReport();
+  showScreen("report");
+}
+
 function loop() {
+  if (!running) return;
   if (video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
     const result = landmarker.detectForVideo(video, performance.now());
@@ -259,13 +339,26 @@ function loop() {
       ui.hip.textContent = f.hipAngle != null ? `${f.hipAngle.toFixed(0)}°` : "–";
       ui.trunk.textContent = `${f.trunkLean.toFixed(0)}°`;
 
-      const bottomFeatures = updatePhase(f);
+      const { bottomFeatures, repCompleted } = updatePhase(f);
       const phaseKo = { standing: "서 있음", descending: "내려가는 중", ascending: "올라오는 중" };
       ui.phase.textContent = phaseKo[squat.phase] ?? squat.phase;
       ui.reps.textContent = squat.reps;
 
       if (bottomFeatures) {
-        showFeedback(classifyRuleBased(bottomFeatures));
+        const label = classifyRuleBased(bottomFeatures);
+        session.pendingResult = { label, kneeAngle: bottomFeatures.kneeAngle };
+        showFeedback(label);
+      }
+      if (repCompleted) {
+        const r = session.pendingResult ?? { label: "good", kneeAngle: null };
+        session.pendingResult = null;
+        updateRepDot(session.results.length, r.label);
+        session.results.push(r);
+        if (session.results.length >= session.goalReps) {
+          speak("운동 완료!");
+          endWorkout();
+          return;
+        }
       }
     } else {
       // 사람이 확실히 안 잡히면 스켈레톤을 그리지 않고 스무딩 상태 초기화
@@ -280,4 +373,70 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-init();
+// ---------- 리포트 ----------
+function renderReport() {
+  const results = session.results;
+  const total = results.length;
+  const counts = {};
+  for (const r of results) counts[r.label] = (counts[r.label] ?? 0) + 1;
+  const goodCount = counts.good ?? 0;
+
+  ui.reportGood.textContent = goodCount;
+  ui.reportTotal.textContent = total;
+
+  const errors = Object.entries(counts).filter(([l]) => l !== "good").sort((a, b) => b[1] - a[1]);
+  ui.reportTopError.innerHTML = errors.length
+    ? `${CLASSES[errors[0][0]].name} <small>${errors[0][1]}회</small>`
+    : "없음 🎉";
+
+  // 분포 바 (등장한 클래스만, good 먼저)
+  ui.distBar.innerHTML = "";
+  ui.distLegend.innerHTML = "";
+  const order = ["good", "depth", "back", "knee"];
+  const shown = order.filter((l) => (counts[l] ?? 0) > 0);
+  ui.distBar.setAttribute("aria-label",
+    shown.map((l) => `${CLASSES[l].name} ${counts[l]}회`).join(", "));
+  shown.forEach((l, i) => {
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    seg.style.flex = counts[l];
+    seg.style.background = CLASSES[l].color;
+    const first = i === 0, last = i === shown.length - 1;
+    seg.style.borderRadius = first && last ? "4px" : first ? "4px 0 0 4px" : last ? "0 4px 4px 0" : "0";
+    ui.distBar.appendChild(seg);
+  });
+  // 범례는 4클래스 항상 표시 (0회 포함 — 색·이름 대응을 고정)
+  for (const l of order) {
+    const span = document.createElement("span");
+    span.innerHTML = `<i style="background:${CLASSES[l].color}"></i>${CLASSES[l].name} ${counts[l] ?? 0}`;
+    ui.distLegend.appendChild(span);
+  }
+
+  // 렙별 리스트
+  ui.repList.innerHTML = "";
+  results.forEach((r, i) => {
+    const li = document.createElement("li");
+    const angle = r.kneeAngle != null ? `무릎 ${r.kneeAngle.toFixed(0)}°` : "";
+    const lab = r.label === "good" ? CLASSES.good.name : `${CLASSES[r.label].name} — ${CLASSES[r.label].msg}`;
+    li.innerHTML = `<span class="n">${i + 1}회</span><i style="background:${CLASSES[r.label].color}"></i>` +
+      `<span class="lab">${lab}</span><span class="ang">${angle}</span>`;
+    ui.repList.appendChild(li);
+  });
+}
+
+// ---------- 이벤트 바인딩 ----------
+document.querySelectorAll(".chip[data-goal]").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll(".chip[data-goal]").forEach((c) => c.classList.remove("on"));
+    chip.classList.add("on");
+    session.goalReps = Number(chip.dataset.goal);
+  });
+});
+ui.startBtn.addEventListener("click", startWorkout);
+$("btn-end").addEventListener("click", endWorkout);
+$("btn-again").addEventListener("click", () => showScreen("start"));
+$("btn-debug").addEventListener("click", () => ui.debugPanel.classList.toggle("hidden"));
+
+// 시작 화면에서 미리 모델 로딩 (시작 버튼 누를 때 대기 시간 감소)
+showScreen("start");
+loadModel().catch((e) => console.warn("모델 사전 로딩 실패(시작 시 재시도):", e));
