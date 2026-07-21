@@ -72,8 +72,17 @@ function pickSide(lms) {
 // ---------- 인식 안정화 ----------
 // 핵심 관절(어깨·엉덩이·무릎)의 평균 가시성으로 "진짜 사람이 잡혔는지" 판정
 const CORE_LMS = [LM.L_SHOULDER, LM.R_SHOULDER, LM.L_HIP, LM.R_HIP, LM.L_KNEE, LM.R_KNEE];
+let lastAvgVisibility = null; // 디버깅용
 function poseReliable(lms) {
+  // 일부 MediaPipe JS 빌드는 visibility를 안 주거나 전부 0으로 준다.
+  // 그 경우 게이트를 끄지 않으면 모든 프레임이 차단됨.
+  const maxVis = Math.max(...lms.map((p) => p.visibility ?? 0));
+  if (maxVis < 0.01) {
+    lastAvgVisibility = null; // visibility 미지원 → 게이트 비활성화
+    return true;
+  }
   const avg = CORE_LMS.reduce((s, i) => s + (lms[i].visibility ?? 0), 0) / CORE_LMS.length;
+  lastAvgVisibility = avg;
   return avg >= CONFIG.MIN_VISIBILITY;
 }
 
@@ -194,12 +203,12 @@ async function init() {
     const fileset = await FilesetResolver.forVisionTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
     );
-    landmarker = await PoseLandmarker.createFromOptions(fileset, {
+    const makeOptions = (delegate) => ({
       baseOptions: {
         // lite → full: 떨림이 훨씬 적음. 데모 기기에서 프레임이 안 나오면 lite로 되돌릴 것
         modelAssetPath:
           "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
-        delegate: "GPU",
+        delegate,
       },
       runningMode: "VIDEO",
       numPoses: 1,
@@ -208,6 +217,12 @@ async function init() {
       minPosePresenceConfidence: 0.6,
       minTrackingConfidence: 0.6,
     });
+    try {
+      landmarker = await PoseLandmarker.createFromOptions(fileset, makeOptions("GPU"));
+    } catch (gpuErr) {
+      console.warn("GPU delegate 실패, CPU로 전환:", gpuErr);
+      landmarker = await PoseLandmarker.createFromOptions(fileset, makeOptions("CPU"));
+    }
     ui.status.textContent = "카메라 연결 중…";
 
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -256,7 +271,10 @@ function loop() {
       // 사람이 확실히 안 잡히면 스켈레톤을 그리지 않고 스무딩 상태 초기화
       smoothedLms = null;
       squat.prevKnee = null;
-      ui.status.textContent = "인식 불안정 — 전신(측면)이 화면에 들어오게 서 주세요";
+      const vis = lastAvgVisibility != null ? ` (가시성 ${lastAvgVisibility.toFixed(2)})` : "";
+      ui.status.textContent = result.landmarks.length === 0
+        ? "사람이 감지되지 않음 — 조명과 거리를 확인하세요"
+        : `인식 불안정 — 전신(측면)이 화면에 들어오게 서 주세요${vis}`;
     }
   }
   requestAnimationFrame(loop);
