@@ -16,6 +16,9 @@ const CONFIG = {
   BOTTOM_ENTER_DELTA: 5,    // 무릎 각도 변화가 이 이하로 안정되면 최저점 후보
   // 피드백 스무딩: 같은 판정이 연속 N프레임 이상일 때만 표시
   SMOOTHING_FRAMES: 5,
+  // 인식 안정화
+  MIN_VISIBILITY: 0.6,     // 핵심 관절 평균 가시성이 이 미만이면 "인식 불안정" 처리
+  LANDMARK_ALPHA: 0.4,     // 랜드마크 EMA 스무딩 계수 (작을수록 부드럽고 반응 느림)
 };
 
 // MediaPipe 랜드마크 인덱스 (33개 중 사용하는 것)
@@ -64,6 +67,32 @@ function pickSide(lms) {
   return leftVis >= rightVis
     ? { shoulder: lms[LM.L_SHOULDER], hip: lms[LM.L_HIP], knee: lms[LM.L_KNEE], ankle: lms[LM.L_ANKLE] }
     : { shoulder: lms[LM.R_SHOULDER], hip: lms[LM.R_HIP], knee: lms[LM.R_KNEE], ankle: lms[LM.R_ANKLE] };
+}
+
+// ---------- 인식 안정화 ----------
+// 핵심 관절(어깨·엉덩이·무릎)의 평균 가시성으로 "진짜 사람이 잡혔는지" 판정
+const CORE_LMS = [LM.L_SHOULDER, LM.R_SHOULDER, LM.L_HIP, LM.R_HIP, LM.L_KNEE, LM.R_KNEE];
+function poseReliable(lms) {
+  const avg = CORE_LMS.reduce((s, i) => s + (lms[i].visibility ?? 0), 0) / CORE_LMS.length;
+  return avg >= CONFIG.MIN_VISIBILITY;
+}
+
+// 랜드마크 EMA 스무딩: 프레임 간 떨림 제거
+let smoothedLms = null;
+function smoothLandmarks(lms) {
+  if (!smoothedLms || smoothedLms.length !== lms.length) {
+    smoothedLms = lms.map((p) => ({ ...p }));
+    return smoothedLms;
+  }
+  const a = CONFIG.LANDMARK_ALPHA;
+  for (let i = 0; i < lms.length; i++) {
+    const s = smoothedLms[i], p = lms[i];
+    s.x += a * (p.x - s.x);
+    s.y += a * (p.y - s.y);
+    s.z += a * (p.z - s.z);
+    s.visibility = p.visibility;
+  }
+  return smoothedLms;
 }
 
 function computeFeatures(lms) {
@@ -167,12 +196,17 @@ async function init() {
     );
     landmarker = await PoseLandmarker.createFromOptions(fileset, {
       baseOptions: {
+        // lite → full: 떨림이 훨씬 적음. 데모 기기에서 프레임이 안 나오면 lite로 되돌릴 것
         modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+          "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
         delegate: "GPU",
       },
       runningMode: "VIDEO",
       numPoses: 1,
+      // 낮으면 배경 사물을 사람으로 오인해 유령 스켈레톤이 생김
+      minPoseDetectionConfidence: 0.6,
+      minPosePresenceConfidence: 0.6,
+      minTrackingConfidence: 0.6,
     });
     ui.status.textContent = "카메라 연결 중…";
 
@@ -199,8 +233,9 @@ function loop() {
     const result = landmarker.detectForVideo(video, performance.now());
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (result.landmarks.length > 0) {
-      const lms = result.landmarks[0];
+    if (result.landmarks.length > 0 && poseReliable(result.landmarks[0])) {
+      ui.status.textContent = "동작 인식 중";
+      const lms = smoothLandmarks(result.landmarks[0]);
       drawer.drawConnectors(lms, PoseLandmarker.POSE_CONNECTIONS, { color: "#4fc3f7", lineWidth: 3 });
       drawer.drawLandmarks(lms, { color: "#ffca28", radius: 4 });
 
@@ -217,6 +252,11 @@ function loop() {
       if (bottomFeatures) {
         showFeedback(classifyRuleBased(bottomFeatures));
       }
+    } else {
+      // 사람이 확실히 안 잡히면 스켈레톤을 그리지 않고 스무딩 상태 초기화
+      smoothedLms = null;
+      squat.prevKnee = null;
+      ui.status.textContent = "인식 불안정 — 전신(측면)이 화면에 들어오게 서 주세요";
     }
   }
   requestAnimationFrame(loop);
