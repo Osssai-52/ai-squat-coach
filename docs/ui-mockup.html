@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 스쿼트 코치 — UI 시안 (팀 리뷰용)</title>
+<style>
+  /* 앱과 동일한 다크 테마. 색상은 검증된 데이터비주얼 팔레트(다크 서피스용) 사용 */
+  :root {
+    color-scheme: dark;
+    --page:        #0d0d0d;
+    --surface:     #1a1a19;
+    --surface-2:   #22221f;
+    --ink:         #ffffff;
+    --ink-2:       #c3c2b7;
+    --ink-muted:   #898781;
+    --hairline:    #2c2c2a;
+    --border:      rgba(255,255,255,0.10);
+    --accent:      #3987e5;
+    /* 클래스 색 (다크 카테고리 슬롯 1~4, 전 조합 CVD 검증 통과 세트) */
+    --c-good:  #008300;  /* 정상 */
+    --c-depth: #3987e5;  /* 깊이 부족 */
+    --c-back:  #c98500;  /* 허리 굽음 */
+    --c-knee:  #d55181;  /* 무릎 모임 */
+    --good-text: #0ca30c;
+    --bad:       #d03b3b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    padding: 32px 24px 64px;
+    line-height: 1.5;
+  }
+  .doc-header { max-width: 1100px; margin: 0 auto 40px; }
+  .doc-header h1 { font-size: 1.5rem; margin-bottom: 4px; }
+  .doc-header p { color: var(--ink-2); font-size: 0.95rem; }
+
+  .screen-block { max-width: 1100px; margin: 0 auto 56px; }
+  .screen-block > h2 {
+    font-size: 1.1rem; color: var(--ink-2); margin-bottom: 12px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--hairline);
+  }
+  .screen-row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+
+  /* 브라우저 프레임 목업 */
+  .frame {
+    flex: 1 1 620px; max-width: 720px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .frame-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px; background: var(--surface-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .frame-bar span { width: 10px; height: 10px; border-radius: 50%; background: var(--hairline); }
+  .frame-body { padding: 24px; min-height: 420px; display: flex; flex-direction: column; }
+
+  .notes { flex: 1 1 260px; min-width: 240px; }
+  .notes h3 { font-size: 0.85rem; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .notes ul { list-style: none; }
+  .notes li {
+    font-size: 0.88rem; color: var(--ink-2);
+    padding: 6px 0 6px 20px; position: relative;
+  }
+  .notes li::before { content: "→"; position: absolute; left: 0; color: var(--accent); }
+
+  /* ---------- 화면 1: 시작 ---------- */
+  .start-body { align-items: center; justify-content: center; text-align: center; gap: 20px; }
+  .app-logo { font-size: 1.6rem; font-weight: 700; }
+  .app-logo small { display: block; font-size: 0.85rem; font-weight: 400; color: var(--ink-muted); margin-top: 4px; }
+  .exercise-card {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--surface-2); border: 1px solid var(--accent);
+    border-radius: 12px; padding: 16px 24px; width: 320px; text-align: left;
+  }
+  .exercise-card .ic { font-size: 2rem; }
+  .exercise-card b { display: block; }
+  .exercise-card small { color: var(--ink-muted); }
+  .stance-guide {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--surface-2); border-radius: 12px; padding: 16px 24px; width: 320px;
+  }
+  .stance-guide p { font-size: 0.85rem; color: var(--ink-2); text-align: left; }
+  .rep-goal { display: flex; gap: 8px; }
+  .chip {
+    padding: 8px 20px; border-radius: 20px; border: 1px solid var(--hairline);
+    color: var(--ink-2); font-size: 0.9rem;
+  }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn-primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 28px;
+    padding: 14px 56px; font-size: 1.1rem; font-weight: 700; cursor: pointer;
+  }
+  .btn-ghost {
+    background: none; border: 1px solid var(--hairline); color: var(--ink-2);
+    border-radius: 20px; padding: 8px 20px; font-size: 0.85rem; cursor: pointer;
+  }
+
+  /* ---------- 화면 2: 운동 ---------- */
+  .workout-body { padding: 0 !important; position: relative; min-height: 420px; background: #000; }
+  .cam-area { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .cam-area svg { opacity: 0.9; }
+  .feedback-banner {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--bad); color: #fff; font-weight: 700; font-size: 1.05rem;
+    padding: 10px 24px; border-radius: 24px; white-space: nowrap;
+  }
+  .rep-hud {
+    position: absolute; top: 16px; right: 16px; text-align: right;
+    background: rgba(26,26,25,0.85); border-radius: 12px; padding: 12px 18px;
+  }
+  .rep-hud .num { font-size: 2.4rem; font-weight: 700; line-height: 1; }
+  .rep-hud .den { color: var(--ink-muted); font-size: 1rem; }
+  .rep-hud .phase { font-size: 0.8rem; color: var(--ink-2); margin-top: 4px; }
+  .rep-dots { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+  .rep-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--hairline); }
+  .rep-dots i.good { background: var(--c-good); }
+  .rep-dots i.err  { background: var(--bad); }
+  .workout-ctrl {
+    position: absolute; bottom: 12px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 12px;
+  }
+  .debug-toggle { position: absolute; bottom: 12px; right: 12px; font-size: 0.75rem; color: var(--ink-muted); }
+
+  /* ---------- 화면 3: 리포트 ---------- */
+  .report-body { gap: 20px; }
+  .hero-row { display: flex; gap: 16px; }
+  .stat-tile {
+    flex: 1; background: var(--surface-2); border-radius: 12px; padding: 16px 20px;
+  }
+  .stat-tile .label { font-size: 0.8rem; color: var(--ink-muted); }
+  .stat-tile .value { font-size: 2rem; font-weight: 700; }
+  .stat-tile .value small { font-size: 1rem; color: var(--ink-muted); font-weight: 400; }
+  .stat-tile .value.good { color: var(--good-text); }
+
+  .dist-chart .bar {
+    display: flex; height: 28px; border-radius: 4px; overflow: hidden; gap: 2px; /* 2px 서피스 갭 */
+    background: var(--surface);
+  }
+  .dist-chart .seg { height: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--ink-2); }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  .rep-list { border-top: 1px solid var(--hairline); }
+  .rep-list li {
+    display: flex; align-items: center; gap: 12px; list-style: none;
+    padding: 8px 4px; border-bottom: 1px solid var(--hairline); font-size: 0.9rem;
+  }
+  .rep-list .n { color: var(--ink-muted); width: 44px; font-variant-numeric: tabular-nums; }
+  .rep-list i { width: 10px; height: 10px; border-radius: 3px; }
+  .rep-list .lab { flex: 1; color: var(--ink-2); }
+  .rep-list .ang { color: var(--ink-muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
+  .report-actions { display: flex; gap: 12px; justify-content: center; margin-top: 4px; }
+
+  h2 .flow { color: var(--ink-muted); font-weight: 400; font-size: 0.85rem; margin-left: 12px; }
+</style>
+</head>
+<body>
+
+<header class="doc-header">
+  <h1>AI 스쿼트 코치 — UI 시안</h1>
+  <p>팀 리뷰용 목업 · 화면 3개 (시작 → 운동 → 리포트) · 합의되면 A가 frontend/에 그대로 구현</p>
+</header>
+
+<!-- ================= 화면 1 ================= -->
+<section class="screen-block">
+  <h2>① 시작 화면 <span class="flow">앱 진입 시</span></h2>
+  <div class="screen-row">
+    <div class="frame">
+      <div class="frame-bar"><span></span><span></span><span></span></div>
+      <div class="frame-body start-body">
+        <div class="app-logo">🏋️ AI 스쿼트 코치<small>실시간 자세 분석 · 음성 피드백</small></div>
+
+        <div class="exercise-card">
+          <div class="ic">🦵</div>
+          <div><b>스쿼트</b><small>측면 촬영 · 4가지 자세 오류 감지</small></div>
+        </div>
+
+        <div class="stance-guide">
+          <svg width="52" height="76" viewBox="0 0 52 76" aria-label="측면 스탠스 안내">
+            <circle cx="30" cy="10" r="7" fill="none" stroke="#c3c2b7" stroke-width="2.5"/>
+            <path d="M30 17 L28 40 L20 56 L20 72 M28 40 L34 56 L34 72 M29 24 L38 38" fill="none" stroke="#c3c2b7" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M4 66 h44" stroke="#2c2c2a" stroke-width="2"/>
+          </svg>
+          <p><b>옆으로 서 주세요</b><br/>카메라에 몸 옆면이 보이고<br/>발끝~머리까지 전신이 화면에<br/>들어와야 합니다</p>
+        </div>
+
+        <div>
+          <div style="font-size:0.85rem;color:var(--ink-muted);margin-bottom:8px">목표 횟수</div>
+          <div class="rep-goal">
+            <span class="chip">5회</span><span class="chip on">10회</span><span class="chip">15회</span>
+          </div>
+        </div>
+
+        <button class="btn-primary">운동 시작</button>
+      </div>
+    </div>
+    <aside class="notes">
+      <h3>설계 노트</h3>
+      <ul>
+        <li>종목 카드는 1개지만 카드 형태로 — "확장 가능한 서비스" 인상 (발표 포인트)</li>
+        <li>측면 스탠스 안내를 시작 화면에서 미리 — 운동 화면에서 "인식 불안정" 뜨는 빈도 감소</li>
+        <li>목표 횟수를 받아야 리포트의 "10회 중 7회"가 성립</li>
+        <li>시작 버튼 누르면 카메라 권한 요청 → 운동 화면 전환</li>
+      </ul>
+    </aside>
+  </div>
+</section>
+
+<!-- ================= 화면 2 ================= -->
+<section class="screen-block">
+  <h2>② 운동 화면 <span class="flow">핵심 화면 — 현재 frontend를 이 형태로 개선</span></h2>
+  <div class="screen-row">
+    <div class="frame">
+      <div class="frame-bar"><span></span><span></span><span></span></div>
+      <div class="frame-body workout-body">
+        <div class="cam-area">
+          <svg width="150" height="260" viewBox="0 0 150 260" aria-label="스쿼트 자세 스켈레톤 예시">
+            <!-- 스쿼트 중인 스켈레톤 (측면) -->
+            <circle cx="58" cy="52" r="13" fill="none" stroke="#3987e5" stroke-width="3"/>
+            <path d="M62 64 L76 108 L52 150 L96 158 L96 208 M52 150 L46 204 M70 82 L40 116" fill="none" stroke="#3987e5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+            <g fill="#c98500">
+              <circle cx="62" cy="64" r="5"/><circle cx="76" cy="108" r="5"/><circle cx="52" cy="150" r="5"/>
+              <circle cx="96" cy="158" r="5"/><circle cx="96" cy="208" r="5"/><circle cx="46" cy="204" r="5"/><circle cx="40" cy="116" r="5"/>
+            </g>
+            <path d="M10 236 h130" stroke="#2c2c2a" stroke-width="2"/>
+          </svg>
+        </div>
+
+        <div class="feedback-banner">더 깊이 앉으세요!</div>
+
+        <div class="rep-hud">
+          <div><span class="num">6</span><span class="den"> / 10</span></div>
+          <div class="phase">올라오는 중</div>
+        </div>
+
+        <div class="rep-dots">
+          <i class="good"></i><i class="good"></i><i class="err"></i><i class="good"></i><i class="good"></i><i class="err"></i><i></i><i></i><i></i><i></i>
+        </div>
+
+        <div class="workout-ctrl"><button class="btn-ghost">운동 종료</button></div>
+        <div class="debug-toggle">디버그 ⚙</div>
+      </div>
+    </div>
+    <aside class="notes">
+      <h3>설계 노트</h3>
+      <ul>
+        <li>렙 카운터를 우상단에 크게 — 운동 중엔 2m 밖에서 봐야 함 (글자 다 크게)</li>
+        <li>피드백 배너는 최저점 판정 직후 2초 표시 + 동시에 음성 출력</li>
+        <li>렙 도트: 초록=정상, 빨강=오류 — 진행 상황이 한눈에</li>
+        <li>각도 숫자판은 기본 숨김, 우하단 "디버그 ⚙"로 토글 (개발·시연 설명용)</li>
+        <li>목표 횟수 도달 시 자동으로 리포트 화면 전환</li>
+      </ul>
+    </aside>
+  </div>
+</section>
+
+<!-- ================= 화면 3 ================= -->
+<section class="screen-block">
+  <h2>③ 리포트 화면 <span class="flow">세트 종료 후</span></h2>
+  <div class="screen-row">
+    <div class="frame">
+      <div class="frame-bar"><span></span><span></span><span></span></div>
+      <div class="frame-body report-body">
+        <div class="hero-row">
+          <div class="stat-tile">
+            <div class="label">정상 자세</div>
+            <div class="value good">7<small> / 10회</small></div>
+          </div>
+          <div class="stat-tile">
+            <div class="label">가장 잦은 오류</div>
+            <div class="value" style="font-size:1.25rem;padding-top:8px">깊이 부족 <small>2회</small></div>
+          </div>
+        </div>
+
+        <div class="dist-chart">
+          <div class="label" style="font-size:0.8rem;color:var(--ink-muted);margin-bottom:6px">자세 분포</div>
+          <div class="bar" role="img" aria-label="정상 7회, 깊이 부족 2회, 허리 굽음 1회">
+            <div class="seg" style="flex:7;background:var(--c-good);border-radius:4px 0 0 4px"></div>
+            <div class="seg" style="flex:2;background:var(--c-depth)"></div>
+            <div class="seg" style="flex:1;background:var(--c-back);border-radius:0 4px 4px 0"></div>
+          </div>
+          <div class="legend">
+            <span><i style="background:var(--c-good)"></i>정상 7</span>
+            <span><i style="background:var(--c-depth)"></i>깊이 부족 2</span>
+            <span><i style="background:var(--c-back)"></i>허리 굽음 1</span>
+            <span><i style="background:var(--c-knee)"></i>무릎 모임 0</span>
+          </div>
+        </div>
+
+        <ul class="rep-list">
+          <li><span class="n">1회</span><i style="background:var(--c-good)"></i><span class="lab">정상</span><span class="ang">무릎 88°</span></li>
+          <li><span class="n">2회</span><i style="background:var(--c-good)"></i><span class="lab">정상</span><span class="ang">무릎 91°</span></li>
+          <li><span class="n">3회</span><i style="background:var(--c-depth)"></i><span class="lab">깊이 부족 — 더 깊이 앉으세요</span><span class="ang">무릎 118°</span></li>
+          <li><span class="n">4회</span><i style="background:var(--c-good)"></i><span class="lab">정상</span><span class="ang">무릎 86°</span></li>
+          <li><span class="n">…</span><span class="lab" style="color:var(--ink-muted)">(10회까지 스크롤)</span></li>
+        </ul>
+
+        <div class="report-actions">
+          <button class="btn-primary" style="padding:12px 36px;font-size:0.95rem">다시 하기</button>
+          <button class="btn-ghost">결과 이미지 저장</button>
+        </div>
+      </div>
+    </div>
+    <aside class="notes">
+      <h3>설계 노트</h3>
+      <ul>
+        <li>히어로 숫자 "7 / 10회"가 이 화면의 전부 — 차트보다 크게</li>
+        <li>클래스 색은 CVD(색각이상) 검증 통과된 4색 고정, 렙 리스트에 텍스트 라벨 병기 (색만으로 구분하지 않음)</li>
+        <li>렙별 리스트: 발표 때 "3회차에 무릎 118°라 깊이 부족 판정" 설명 가능 — 해석가능성 어필</li>
+        <li>"결과 이미지 저장"은 canvas 캡처 — 시간 남으면, 없으면 컷</li>
+      </ul>
+    </aside>
+  </div>
+</section>
+
+</body>
+</html>
