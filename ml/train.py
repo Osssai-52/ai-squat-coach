@@ -1,9 +1,11 @@
-"""자세 분류 모델 학습·평가 (2일차 오후 작업).
+"""자세 분류 모델 학습·평가.
 
 사용법:
     python train.py ../data/features.csv
 
-- Random Forest 학습, 5-fold 교차검증
+- Random Forest 학습, 그룹(사람/출처) 단위 교차검증
+  * 같은 사람의 프레임이 train과 test에 같이 들어가면 정확도가 뻥튀기됨 (leakage)
+  * group 컬럼(영상=사람 이름, 이미지=파일명) 기준으로 분할해서 정직한 수치를 만든다
 - confusion matrix + feature importance 출력 (발표 자료용)
 - 규칙 기반 베이스라인과 정확도 비교
 - 학습된 트리 규칙을 models/model_rules.json으로 덤프 → 프론트 JS에서 로드해 추론
@@ -15,7 +17,7 @@ from pathlib import Path
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.model_selection import GroupKFold, GroupShuffleSplit, cross_val_score
 
 FEATURES = ["knee_angle", "hip_angle", "trunk_lean"]
 
@@ -37,12 +39,19 @@ def main():
         print(__doc__)
         sys.exit(1)
     df = pd.read_csv(sys.argv[1])
-    print(f"데이터: {len(df)}행, 클래스 분포:\n{df['label'].value_counts()}\n")
+    X, y, groups = df[FEATURES], df["label"], df["group"]
+    n_groups = groups.nunique()
+    print(f"데이터: {len(df)}행, 그룹(사람/출처) {n_groups}개")
+    print(f"클래스 분포:\n{y.value_counts()}\n")
 
-    X, y = df[FEATURES], df["label"]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
-    )
+    # --- 그룹 단위 홀드아웃 분할 (사람/출처가 train·test에 안 섞이게) ---
+    gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+    train_idx, test_idx = next(gss.split(X, y, groups))
+    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+    missing = set(y.unique()) - set(y_test.unique())
+    if missing:
+        print(f"주의: 테스트셋에 없는 클래스 {missing} — 그룹 수가 적어서 생기는 현상. 데이터(특히 사람 수)를 늘릴 것\n")
 
     # --- 규칙 기반 베이스라인 ---
     rule_pred = X_test.apply(rule_based_predict, axis=1)
@@ -51,11 +60,16 @@ def main():
 
     # --- Random Forest ---
     model = RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42)
-    cv = cross_val_score(model, X, y, cv=5)
+    n_folds = min(5, n_groups)
+    if n_folds >= 2:
+        cv = cross_val_score(model, X, y, cv=GroupKFold(n_splits=n_folds), groups=groups)
+        cv_txt = f"({n_folds}-fold 그룹 CV: {cv.mean():.3f} ± {cv.std():.3f})"
+    else:
+        cv_txt = "(그룹이 1개뿐이라 CV 생략 — 사람을 늘리세요)"
     model.fit(X_train, y_train)
     ml_pred = model.predict(X_test)
     ml_acc = accuracy_score(y_test, ml_pred)
-    print(f"[Random Forest] 정확도: {ml_acc:.3f} (5-fold CV: {cv.mean():.3f} ± {cv.std():.3f})")
+    print(f"[Random Forest] 정확도: {ml_acc:.3f} {cv_txt}")
     print(f"\n=== 발표용 핵심 수치: 규칙 기반 {rule_acc:.1%} → ML {ml_acc:.1%} ===\n")
 
     print("Confusion Matrix (행=실제, 열=예측):")
@@ -63,7 +77,7 @@ def main():
     print(pd.DataFrame(confusion_matrix(y_test, ml_pred, labels=labels),
                        index=labels, columns=labels))
     print()
-    print(classification_report(y_test, ml_pred))
+    print(classification_report(y_test, ml_pred, zero_division=0))
 
     print("Feature Importance:")
     for name, imp in zip(FEATURES, model.feature_importances_):
