@@ -5,6 +5,7 @@ import {
   FilesetResolver,
   DrawingUtils,
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+import { loadPostureModel, predictPosture } from "./inference.js";
 
 // ---------- 설정값 (팀 데이터로 튜닝할 것) ----------
 const CONFIG = {
@@ -47,7 +48,7 @@ const ui = {
   phase: $("squat-phase"), reps: $("rep-count"), goalDisplay: $("rep-goal-display"),
   repDots: $("rep-dots"),
   feedback: $("feedback"), status: $("status"),
-  debugPanel: $("debug-panel"),
+  debugPanel: $("debug-panel"), engine: $("engine"),
   reportGood: $("report-good"), reportTotal: $("report-total"), reportTopError: $("report-top-error"),
   distBar: $("dist-bar"), distLegend: $("dist-legend"), repList: $("rep-list"),
 };
@@ -196,11 +197,22 @@ function updatePhase(f) {
   return { bottomFeatures, repCompleted };
 }
 
-// ---------- 규칙 기반 판정 v0 (2일차에 ML 모델로 교체) ----------
+// ---------- 자세 판정 ----------
+// ML 모델(model_rules.json)이 있으면 Random Forest, 없으면 규칙 기반 v0
+let postureModel = null;
+
 function classifyRuleBased(f) {
   if (f.kneeAngle > CONFIG.DEPTH_KNEE_ANGLE) return "depth";
   if (f.trunkLean > CONFIG.TRUNK_LEAN_MAX) return "back";
   return "good";
+}
+
+function classifyPosture(f) {
+  if (postureModel) {
+    const label = predictPosture(postureModel, f);
+    if (label && CLASSES[label]) return label;
+  }
+  return classifyRuleBased(f);
 }
 
 // ---------- 피드백 ----------
@@ -341,7 +353,7 @@ function loop() {
       ui.reps.textContent = squat.reps;
 
       if (bottomFeatures) {
-        const label = classifyRuleBased(bottomFeatures);
+        const label = classifyPosture(bottomFeatures);
         session.pendingResult = { label, kneeAngle: bottomFeatures.kneeAngle };
         showFeedback(label);
       }
@@ -436,3 +448,9 @@ $("btn-debug").addEventListener("click", () => ui.debugPanel.classList.toggle("h
 // 시작 화면에서 미리 모델 로딩 (시작 버튼 누를 때 대기 시간 감소)
 showScreen("start");
 loadModel().catch((e) => console.warn("모델 사전 로딩 실패(시작 시 재시도):", e));
+loadPostureModel().then((m) => {
+  postureModel = m;
+  const engine = m ? `ML (트리 ${m.trees.length}개)` : "규칙 기반 v0";
+  ui.engine.textContent = engine;
+  console.info(`자세 판정 엔진: ${engine}`);
+});

@@ -42,6 +42,18 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+### 데이터 → 모델 → 배포 (2~3일차 루틴)
+
+```bash
+cd ml
+python extract_features.py ../data ../data/features.csv   # 영상+이미지 → 학습 CSV
+python train.py ../data/features.csv                      # 학습 + 발표 차트(figures/) + 모델 덤프
+copy models\model_rules.json ..\frontend\                 # 프론트에 모델 배포
+```
+
+- `frontend/model_rules.json`이 있으면 앱이 자동으로 ML 판정으로 전환 (없으면 규칙 기반 v0)
+- 현재 판정 엔진은 운동 화면의 "디버그 ⚙" 패널에서 확인 가능
+
 ## 기술 스택
 
 - **포즈 추정**: MediaPipe Pose Landmarker (브라우저: tasks-vision JS / 학습용: Python)

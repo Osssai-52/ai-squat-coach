@@ -8,6 +8,7 @@
   * group 컬럼(영상=사람 이름, 이미지=파일명) 기준으로 분할해서 정직한 수치를 만든다
 - confusion matrix + feature importance 출력 (발표 자료용)
 - 규칙 기반 베이스라인과 정확도 비교
+- 발표용 차트 3종을 figures/에 PNG로 저장
 - 학습된 트리 규칙을 models/model_rules.json으로 덤프 → 프론트 JS에서 로드해 추론
 """
 import json
@@ -83,6 +84,9 @@ def main():
     for name, imp in zip(FEATURES, model.feature_importances_):
         print(f"  {name}: {imp:.3f}")
 
+    cm = confusion_matrix(y_test, ml_pred, labels=labels)
+    save_charts(rule_acc, ml_acc, cm, labels, model.feature_importances_)
+
     # --- JS 추론용 모델 덤프 ---
     out_dir = Path(__file__).parent / "models"
     out_dir.mkdir(exist_ok=True)
@@ -94,6 +98,71 @@ def main():
     out_path = out_dir / "model_rules.json"
     out_path.write_text(json.dumps(dump), encoding="utf-8")
     print(f"\nJS 추론용 모델 저장 → {out_path} (frontend/에 복사해서 사용)")
+
+
+LABEL_KO = {"good": "정상", "depth": "깊이 부족", "back": "허리 굽음", "knee": "무릎 모임"}
+FEATURE_KO = {"knee_angle": "무릎 각도", "hip_angle": "고관절 각도", "trunk_lean": "허리 기울기"}
+
+
+def save_charts(rule_acc, ml_acc, cm, labels, importances):
+    """발표용 차트 3종을 figures/에 저장."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams["font.family"] = "Malgun Gothic"   # 한글 라벨
+    plt.rcParams["axes.unicode_minus"] = False
+    BLUE, GRAY, INK, MUTED = "#2a78d6", "#c3c2b7", "#0b0b0b", "#52514e"
+
+    out_dir = Path(__file__).parent / "figures"
+    out_dir.mkdir(exist_ok=True)
+    labels_ko = [LABEL_KO.get(l, l) for l in labels]
+
+    # 1) 규칙 기반 vs ML 정확도 — 발표의 핵심 한 장
+    fig, ax = plt.subplots(figsize=(4.6, 3.2))
+    bars = ax.bar(["규칙 기반", "Random Forest"], [rule_acc, ml_acc],
+                  color=[GRAY, BLUE], width=0.55)
+    ax.bar_label(bars, labels=[f"{v:.1%}" for v in (rule_acc, ml_acc)],
+                 fontsize=12, fontweight="bold", color=INK, padding=4)
+    ax.set_ylim(0, 1.12)
+    ax.set_ylabel("정확도", color=MUTED)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.tick_params(colors=MUTED)
+    fig.tight_layout()
+    fig.savefig(out_dir / "accuracy_comparison.png", dpi=200)
+    plt.close(fig)
+
+    # 2) Confusion Matrix
+    fig, ax = plt.subplots(figsize=(4.6, 4.0))
+    im = ax.imshow(cm, cmap="Blues")
+    ax.set_xticks(range(len(labels_ko)), labels_ko)
+    ax.set_yticks(range(len(labels_ko)), labels_ko)
+    ax.set_xlabel("예측", color=MUTED)
+    ax.set_ylabel("실제", color=MUTED)
+    thresh = cm.max() / 2 if cm.max() else 0.5
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, cm[i, j], ha="center", va="center", fontsize=11,
+                    color="white" if cm[i, j] > thresh else INK)
+    fig.tight_layout()
+    fig.savefig(out_dir / "confusion_matrix.png", dpi=200)
+    plt.close(fig)
+
+    # 3) Feature Importance
+    order = sorted(range(len(FEATURES)), key=lambda i: importances[i])
+    fig, ax = plt.subplots(figsize=(4.6, 2.6))
+    names = [FEATURE_KO.get(FEATURES[i], FEATURES[i]) for i in order]
+    vals = [importances[i] for i in order]
+    bars = ax.barh(names, vals, color=BLUE, height=0.55)
+    ax.bar_label(bars, labels=[f"{v:.2f}" for v in vals], padding=4, color=INK)
+    ax.set_xlim(0, max(vals) * 1.25)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.tick_params(colors=MUTED)
+    fig.tight_layout()
+    fig.savefig(out_dir / "feature_importance.png", dpi=200)
+    plt.close(fig)
+
+    print(f"발표용 차트 3종 저장 → {out_dir}\\accuracy_comparison.png, confusion_matrix.png, feature_importance.png")
 
 
 def export_tree(tree, classes):
