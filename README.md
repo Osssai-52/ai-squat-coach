@@ -46,13 +46,19 @@ pip install -r requirements.txt
 
 ```bash
 cd ml
+# 스쿼트 동작 분류
 python extract_features.py ../data ../data/features.csv   # 영상+이미지 → 학습 CSV
 python train.py ../data/features.csv                      # 학습 + 발표 차트(figures/) + 모델 덤프
 copy models\model_rules.json ..\frontend\                 # 프론트에 모델 배포
+
+# 체형 분류 (거북목/어깨 말림)
+python extract_posture.py ../data/posture ../data/posture_features.csv
+python train_posture.py ../data/posture_features.csv
+copy models\posture_model.json ..\frontend\
 ```
 
-- `frontend/model_rules.json`이 있으면 앱이 자동으로 ML 판정으로 전환 (없으면 규칙 기반 v0)
-- 현재 판정 엔진은 운동 화면의 "디버그 ⚙" 패널에서 확인 가능
+- 모델 JSON이 frontend/에 있으면 자동으로 ML 판정, 없으면 규칙 기반 폴백
+- 스쿼트 판정 엔진은 운동 화면 "⚙" 패널, 체형 판정 엔진은 브라우저 콘솔에서 확인
 
 ## 기술 스택
 

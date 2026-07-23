@@ -1,5 +1,14 @@
-// 체형 분석: 촬영 프레임 검증 → 지표 계산 → 판정 → 운동 추천
+// 체형 분석: 촬영 프레임 검증 → 지표 계산 → 판정(ML 우선, 규칙 폴백) → 운동 추천
 import { LM, trunkLean, kneeAnkleRatio } from "./pose.js";
+import { loadPostureModel, predictPosture } from "./inference.js";
+
+// 체형 ML 모델 (ml/train_posture.py가 덤프한 posture_model.json — 없으면 규칙 기반)
+let postureML = null;
+export async function initPostureML() {
+  postureML = await loadPostureModel("posture_model.json");
+  return !!postureML;
+}
+export function isPostureML() { return !!postureML; }
 
 // ---------- 촬영 프레임 검증 (부위 누락 안내) ----------
 const FRAME_MARGIN = 0.02;
@@ -58,19 +67,31 @@ export function analyzePosture({ front, side }) {
 
     if (torso > 1e-6) {
       const fh = Math.abs(ear.x - sh.x) / torso;
+      const rs = Math.abs(sh.x - hip.x) / torso;
+      const lean = trunkLean(sh, hip);
+
+      // ML 모델이 있으면 분류 결과로 판정, 없으면 임계값 규칙
+      let neckWarn = fh > T.FORWARD_HEAD;
+      let shoulderWarn = rs > T.ROUND_SHOULDER;
+      if (postureML) {
+        const label = predictPosture(postureML, { forwardHead: fh, roundShoulder: rs, trunkLean: lean });
+        if (label) {
+          neckWarn = label === "neck";
+          shoulderWarn = label === "shoulder";
+        }
+      }
+
       items.push({
         key: "forwardHead", name: "목 정렬", value: (fh * 100).toFixed(0), unit: "%",
-        status: fh > T.FORWARD_HEAD ? "warn" : "ok",
-        desc: fh > T.FORWARD_HEAD
+        status: neckWarn ? "warn" : "ok",
+        desc: neckWarn
           ? "머리가 어깨보다 앞으로 나와 있어요 (거북목 경향)"
           : "귀와 어깨가 잘 정렬되어 있어요",
       });
-
-      const rs = Math.abs(sh.x - hip.x) / torso;
       items.push({
         key: "roundShoulder", name: "어깨 정렬", value: (rs * 100).toFixed(0), unit: "%",
-        status: rs > T.ROUND_SHOULDER ? "warn" : "ok",
-        desc: rs > T.ROUND_SHOULDER
+        status: shoulderWarn ? "warn" : "ok",
+        desc: shoulderWarn
           ? "어깨가 앞으로 말려 있어요 (라운드 숄더 경향)"
           : "어깨가 골반 위에 잘 놓여 있어요",
       });

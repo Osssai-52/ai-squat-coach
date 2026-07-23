@@ -1,6 +1,6 @@
 // 핏폼: 체형 분석 → 맞춤 운동 추천 → 스쿼트 실시간 자세 교정
 import { getLandmarker, computeSquatFeatures, PoseLandmarker, DrawingUtils } from "./pose.js";
-import { validateFrame, analyzePosture, buildRecommendations, EXERCISES } from "./posture.js";
+import { validateFrame, analyzePosture, buildRecommendations, EXERCISES, initPostureML, isPostureML } from "./posture.js";
 import { loadPostureModel, predictPosture } from "./inference.js";
 
 // ---------- 스쿼트 판정 설정 (팀 실측으로 튜닝) ----------
@@ -190,9 +190,10 @@ $("btn-shoot").addEventListener("click", async () => {
 
 function renderResult(items) {
   const warns = items.filter((i) => i.status === "warn");
+  const engine = isPostureML() ? " · 학습 모델 분석" : "";
   $("result-hero").innerHTML = warns.length === 0
-    ? `<div class="big-num good">모두 양호</div><p>측정한 ${items.length}개 항목이 정상 범위예요</p>`
-    : `<div class="big-num warn">주의 ${warns.length}개</div><p>${warns.map((w) => w.name).join(" · ")} 항목을 관리해 보세요</p>`;
+    ? `<div class="big-num good">모두 양호</div><p>측정한 ${items.length}개 항목이 정상 범위예요${engine}</p>`
+    : `<div class="big-num warn">주의 ${warns.length}개</div><p>${warns.map((w) => w.name).join(" · ")} 항목을 관리해 보세요${engine}</p>`;
   const list = $("result-list");
   list.innerHTML = "";
   for (const item of items) {
@@ -613,3 +614,4 @@ loadPostureModel().then((m) => {
   postureModel = m;
   $("engine").textContent = m ? `ML (트리 ${m.trees.length}개)` : "규칙 기반";
 });
+initPostureML().then((ok) => console.info(`체형 판정 엔진: ${ok ? "ML" : "규칙 기반"}`));

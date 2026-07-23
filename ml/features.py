@@ -6,6 +6,7 @@
 import math
 
 # MediaPipe Pose 랜드마크 인덱스
+L_EAR, R_EAR = 7, 8
 L_SHOULDER, R_SHOULDER = 11, 12
 L_HIP, R_HIP = 23, 24
 L_KNEE, R_KNEE = 25, 26
@@ -65,7 +66,7 @@ def pick_side(lms):
 
 
 def compute_features(lms):
-    """랜드마크 → 피처 dict. 프레임 단위로 호출."""
+    """랜드마크 → 스쿼트 피처 dict. 프레임 단위로 호출."""
     shoulder, hip, knee, ankle, heel, toe = pick_side(lms)
     return {
         "knee_angle": angle_at(hip, knee, ankle),
@@ -73,4 +74,24 @@ def compute_features(lms):
         "trunk_lean": trunk_lean(shoulder, hip),
         "foot_angle": foot_angle(heel, toe),
         "knee_ankle_ratio": knee_ankle_ratio(lms),
+    }
+
+
+def _mid(a, b):
+    return ((a.x + b.x) / 2, (a.y + b.y) / 2)
+
+
+def compute_posture_features(lms):
+    """측면 서 있는 사진 → 체형(거북목/어깨 말림) 피처 dict.
+    주의: frontend/posture.js의 지표 계산과 정의 동일하게 유지."""
+    ear = _mid(lms[L_EAR], lms[R_EAR])
+    sh = _mid(lms[L_SHOULDER], lms[R_SHOULDER])
+    hip = _mid(lms[L_HIP], lms[R_HIP])
+    torso = math.hypot(sh[0] - hip[0], sh[1] - hip[1])
+    if torso < 1e-6:
+        return {"forward_head": None, "round_shoulder": None, "trunk_lean": None}
+    return {
+        "forward_head": abs(ear[0] - sh[0]) / torso,     # 귀-어깨 수평 오프셋 / 몸통 길이
+        "round_shoulder": abs(sh[0] - hip[0]) / torso,   # 어깨-골반 수평 오프셋 / 몸통 길이
+        "trunk_lean": trunk_lean(sh, hip),
     }
