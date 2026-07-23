@@ -1,16 +1,20 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #f4f5f7;
+  /* BodyBuddy 브랜드 팔레트 (로고 기반: 민트/딥그린/테라코타/피치) */
+  --bg: #eef7f2;
   --card: #ffffff;
-  --ink: #191f28;
-  --sub: #6b7684;
-  --line: #e7eaee;
-  --accent: #3182f6;
-  --accent-soft: #e8f1fe;
+  --ink: #1e2b25;
+  --sub: #64786e;
+  --line: #dcebe2;
+  --accent: #1a7a55;
+  --accent-soft: #ddf0e7;
+  --orange: #d95f2b;
+  --orange-soft: #fbe9df;
+  --peach: #f2a58c;
   --good: #12b76a;
-  --warn: #f79009;
-  --bad: #f04438;
+  --warn: #e0821e;
+  --bad: #e14b3b;
   /* 스쿼트 클래스 색 (라이트 서피스용 검증 팔레트 — 텍스트 라벨 항상 병기) */
   --c-good: #008300;
   --c-depth: #2a78d6;
@@ -23,7 +27,7 @@
 html, body { height: 100%; }
 body {
   font-family: "Pretendard", system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
-  background: #e9ebee;
+  background: #e0ede6;
   color: var(--ink);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -94,7 +98,9 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 /* ---------- 온보딩 ---------- */
 #v-onboard { justify-content: center; padding: 24px; }
 .onboard-inner { display: flex; flex-direction: column; gap: 14px; }
-.brand { color: var(--accent); font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; }
+.brand-logo { width: 88px; margin-bottom: 4px; }
+.brand { font-weight: 800; font-size: 1.35rem; letter-spacing: -0.01em; color: var(--accent); }
+.brand em { font-style: normal; color: var(--orange); }
 #v-onboard h1 { font-size: 1.6rem; line-height: 1.35; }
 .field-group { margin: 18px 0 6px; display: flex; flex-direction: column; gap: 12px; }
 .field span { font-size: 0.82rem; color: var(--sub); display: block; margin-bottom: 6px; }
@@ -136,8 +142,8 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 .chip-row .pill {
   font-size: 0.8rem; border-radius: 10px; padding: 5px 11px; font-weight: 500;
 }
-.pill.ok { background: #ecfaf3; color: #0b7a4b; }
-.pill.warn { background: #fef3e6; color: #b25e04; }
+.pill.ok { background: #e5f5ec; color: #0b7a4b; }
+.pill.warn { background: var(--orange-soft); color: #b04616; }
 
 .reco-list { display: flex; flex-direction: column; gap: 10px; }
 .reco-card {
@@ -149,7 +155,7 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 .reco-card:active { transform: scale(0.99); }
 .reco-card .t b { font-size: 1rem; color: var(--ink); display: flex; align-items: center; gap: 6px; }
 .reco-card .live-badge {
-  font-size: 0.68rem; background: var(--accent-soft); color: var(--accent);
+  font-size: 0.68rem; background: var(--orange-soft); color: var(--orange);
   border-radius: 6px; padding: 2px 6px; font-weight: 700;
 }
 .reco-card .t p { color: var(--sub); font-size: 0.83rem; margin-top: 3px; }
