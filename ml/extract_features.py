@@ -25,7 +25,7 @@ import mediapipe as mp
 
 from features import compute_features
 
-VALID_LABELS = {"good", "knee", "back", "depth"}
+VALID_LABELS = {"good", "knee", "back", "depth", "heel"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -63,7 +63,7 @@ def extract_video_frames(path: Path, pose):
         if not result.pose_landmarks:
             continue
         f = compute_features(result.pose_landmarks.landmark)
-        if f["knee_angle"] is None:
+        if any(v is None for v in f.values()):
             continue
         frames.append((idx, f))
     cap.release()
@@ -156,10 +156,12 @@ def main():
                         print(f"  포즈 미검출 (제외): {label}/{img_path.name}")
                         continue
                     f = compute_features(result.pose_landmarks.landmark)
-                    if f["knee_angle"] is None:
+                    if any(v is None for v in f.values()):
                         continue
                     src = f"images/{label}/{img_path.name}"
-                    rows.append(row(src, 0, label, src, f))
+                    # 그룹 = 파일명의 밑줄 앞부분: "minsu_01.jpg" → minsu (사람 단위),
+                    # 밑줄이 없으면 파일명 전체 → 파일 단위 (웹 수집 사진)
+                    rows.append(row(src, 0, label, img_path.stem.split("_")[0], f))
                     image_count += 1
         print(f"  이미지 {image_count}장 추출")
 
@@ -169,7 +171,8 @@ def main():
 
     with open(out_csv, "w", newline="", encoding="utf-8") as fp:
         writer = csv.DictWriter(fp, fieldnames=[
-            "source", "frame", "label", "group", "knee_angle", "hip_angle", "trunk_lean"])
+            "source", "frame", "label", "group",
+            "knee_angle", "hip_angle", "trunk_lean", "foot_angle", "knee_ankle_ratio"])
         writer.writeheader()
         writer.writerows(rows)
 

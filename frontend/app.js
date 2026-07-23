@@ -12,6 +12,8 @@ const CONFIG = {
   // 규칙 기반 v0 임계값
   DEPTH_KNEE_ANGLE: 100,   // 최저점에서 무릎 각도가 이보다 크면 "깊이 부족"
   TRUNK_LEAN_MAX: 50,      // 최저점에서 허리 기울기(수직 기준 도)가 이보다 크면 "허리 굽음"
+  HEEL_FOOT_ANGLE: 25,     // 최저점에서 발 각도(뒤꿈치→발끝 vs 수평)가 이보다 크면 "발뒤꿈치 들림"
+  KNEE_RATIO_MIN: 0.7,     // 최저점에서 무릎/발목 간격비가 이보다 작으면 "무릎 모임" (45° 촬영 기준)
   // 동작 구간 판정
   STANDING_KNEE_ANGLE: 160, // 이 이상이면 서 있는 상태
   BOTTOM_ENTER_DELTA: 5,    // 무릎 각도가 이만큼 다시 커지면 최저점을 지난 것
@@ -22,10 +24,11 @@ const CONFIG = {
 
 // 클래스 메타 (ml/train.py의 클래스 코드와 동일하게 유지)
 const CLASSES = {
-  good:  { name: "정상",      msg: "좋은 자세!",          color: "var(--c-good)" },
-  depth: { name: "깊이 부족", msg: "더 깊이 앉으세요!",    color: "var(--c-depth)" },
-  back:  { name: "허리 굽음", msg: "허리를 세우세요!",     color: "var(--c-back)" },
-  knee:  { name: "무릎 모임", msg: "무릎을 벌려 주세요!",  color: "var(--c-knee)" },
+  good:  { name: "정상",          msg: "좋은 자세!",            color: "var(--c-good)" },
+  depth: { name: "깊이 부족",     msg: "더 깊이 앉으세요!",      color: "var(--c-depth)" },
+  back:  { name: "허리 굽음",     msg: "허리를 세우세요!",       color: "var(--c-back)" },
+  heel:  { name: "발뒤꿈치 들림", msg: "발뒤꿈치를 붙이세요!",   color: "var(--c-heel)" },
+  knee:  { name: "무릎 모임",     msg: "무릎을 벌려 주세요!",    color: "var(--c-knee)" },
 };
 
 // MediaPipe 랜드마크 인덱스 (33개 중 사용하는 것)
@@ -34,6 +37,8 @@ const LM = {
   L_HIP: 23, R_HIP: 24,
   L_KNEE: 25, R_KNEE: 26,
   L_ANKLE: 27, R_ANKLE: 28,
+  L_HEEL: 29, R_HEEL: 30,
+  L_FOOT: 31, R_FOOT: 32, // foot_index(발끝)
 };
 
 // ---------- DOM ----------
@@ -45,6 +50,7 @@ const ui = {
   screens: { start: $("screen-start"), workout: $("screen-workout"), report: $("screen-report") },
   startBtn: $("btn-start"), startStatus: $("start-status"),
   knee: $("knee-angle"), hip: $("hip-angle"), trunk: $("trunk-lean"),
+  foot: $("foot-angle"), ratio: $("knee-ratio"),
   phase: $("squat-phase"), reps: $("rep-count"), goalDisplay: $("rep-goal-display"),
   repDots: $("rep-dots"),
   feedback: $("feedback"), status: $("status"),
@@ -84,13 +90,31 @@ function trunkLean(shoulder, hip) {
   return Math.abs((Math.atan2(dx, -dy) * 180) / Math.PI);
 }
 
+// 양 무릎 간격 ÷ 양 발목 간격. 무릎이 안쪽으로 모이면 1보다 작아짐 (45° 촬영 기준 피처)
+function kneeAnkleRatio(lms) {
+  const kneeW = Math.hypot(lms[LM.L_KNEE].x - lms[LM.R_KNEE].x, lms[LM.L_KNEE].y - lms[LM.R_KNEE].y);
+  const ankleW = Math.hypot(lms[LM.L_ANKLE].x - lms[LM.R_ANKLE].x, lms[LM.L_ANKLE].y - lms[LM.R_ANKLE].y);
+  if (ankleW < 1e-6) return null;
+  return kneeW / ankleW;
+}
+
+// 뒤꿈치→발끝 선이 수평과 이루는 각도(도). 발이 바닥에 붙어 있으면 ~0, 까치발이면 커짐
+function footAngle(heel, toe) {
+  const dx = Math.abs(toe.x - heel.x);
+  const dy = toe.y - heel.y; // 뒤꿈치가 들리면 heel.y < toe.y → dy > 0
+  if (dx === 0 && dy === 0) return null;
+  return (Math.atan2(dy, dx) * 180) / Math.PI;
+}
+
 // 측면 촬영이므로 카메라에 가까운(가시성 높은) 쪽 관절만 사용
 function pickSide(lms) {
   const leftVis = (lms[LM.L_HIP].visibility ?? 0) + (lms[LM.L_KNEE].visibility ?? 0);
   const rightVis = (lms[LM.R_HIP].visibility ?? 0) + (lms[LM.R_KNEE].visibility ?? 0);
   return leftVis >= rightVis
-    ? { shoulder: lms[LM.L_SHOULDER], hip: lms[LM.L_HIP], knee: lms[LM.L_KNEE], ankle: lms[LM.L_ANKLE] }
-    : { shoulder: lms[LM.R_SHOULDER], hip: lms[LM.R_HIP], knee: lms[LM.R_KNEE], ankle: lms[LM.R_ANKLE] };
+    ? { shoulder: lms[LM.L_SHOULDER], hip: lms[LM.L_HIP], knee: lms[LM.L_KNEE],
+        ankle: lms[LM.L_ANKLE], heel: lms[LM.L_HEEL], toe: lms[LM.L_FOOT] }
+    : { shoulder: lms[LM.R_SHOULDER], hip: lms[LM.R_HIP], knee: lms[LM.R_KNEE],
+        ankle: lms[LM.R_ANKLE], heel: lms[LM.R_HEEL], toe: lms[LM.R_FOOT] };
 }
 
 // ---------- 인식 안정화 ----------
@@ -134,6 +158,8 @@ function computeFeatures(lms) {
     kneeAngle: angleAt(s.hip, s.knee, s.ankle),
     hipAngle: angleAt(s.shoulder, s.hip, s.knee),
     trunkLean: trunkLean(s.shoulder, s.hip),
+    footAngle: footAngle(s.heel, s.toe),
+    kneeAnkleRatio: kneeAnkleRatio(lms),
   };
 }
 
@@ -204,6 +230,8 @@ let postureModel = null;
 function classifyRuleBased(f) {
   if (f.kneeAngle > CONFIG.DEPTH_KNEE_ANGLE) return "depth";
   if (f.trunkLean > CONFIG.TRUNK_LEAN_MAX) return "back";
+  if (f.footAngle != null && f.footAngle > CONFIG.HEEL_FOOT_ANGLE) return "heel";
+  if (f.kneeAnkleRatio != null && f.kneeAnkleRatio < CONFIG.KNEE_RATIO_MIN) return "knee";
   return "good";
 }
 
@@ -346,6 +374,8 @@ function loop() {
       ui.knee.textContent = f.kneeAngle != null ? `${f.kneeAngle.toFixed(0)}°` : "–";
       ui.hip.textContent = f.hipAngle != null ? `${f.hipAngle.toFixed(0)}°` : "–";
       ui.trunk.textContent = `${f.trunkLean.toFixed(0)}°`;
+      ui.foot.textContent = f.footAngle != null ? `${f.footAngle.toFixed(0)}°` : "–";
+      ui.ratio.textContent = f.kneeAnkleRatio != null ? f.kneeAnkleRatio.toFixed(2) : "–";
 
       const { bottomFeatures, repCompleted } = updatePhase(f);
       const phaseKo = { standing: "서 있음", descending: "내려가는 중", ascending: "올라오는 중" };
@@ -375,7 +405,7 @@ function loop() {
       const vis = lastAvgVisibility != null ? ` (가시성 ${lastAvgVisibility.toFixed(2)})` : "";
       ui.status.textContent = result.landmarks.length === 0
         ? "사람이 감지되지 않음 — 조명과 거리를 확인하세요"
-        : `인식 불안정 — 전신(측면)이 화면에 들어오게 서 주세요${vis}`;
+        : `인식 불안정 — 전신이 45° 각도로 화면에 들어오게 서 주세요${vis}`;
     }
   }
   requestAnimationFrame(loop);
@@ -400,7 +430,7 @@ function renderReport() {
   // 분포 바 (등장한 클래스만, good 먼저)
   ui.distBar.innerHTML = "";
   ui.distLegend.innerHTML = "";
-  const order = ["good", "depth", "back", "knee"];
+  const order = ["good", "depth", "back", "heel", "knee"];
   const shown = order.filter((l) => (counts[l] ?? 0) > 0);
   ui.distBar.setAttribute("aria-label",
     shown.map((l) => `${CLASSES[l].name} ${counts[l]}회`).join(", "));
@@ -413,7 +443,7 @@ function renderReport() {
     seg.style.borderRadius = first && last ? "4px" : first ? "4px 0 0 4px" : last ? "0 4px 4px 0" : "0";
     ui.distBar.appendChild(seg);
   });
-  // 범례는 4클래스 항상 표시 (0회 포함 — 색·이름 대응을 고정)
+  // 범례는 5클래스 항상 표시 (0회 포함 — 색·이름 대응 고정)
   for (const l of order) {
     const span = document.createElement("span");
     span.innerHTML = `<i style="background:${CLASSES[l].color}"></i>${CLASSES[l].name} ${counts[l] ?? 0}`;

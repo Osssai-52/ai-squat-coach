@@ -9,10 +9,11 @@ data/
 ├── videos/                  ← 자체 촬영 영상 (파일명 규칙: 이름_클래스_회차.mp4)
 │   ├── minsu_good_01.mp4
 │   └── jiyeon_depth_03.mp4
-├── images/                  ← 인터넷 수집 이미지 (폴더명 = 라벨)
-│   ├── good/
+├── images/                  ← 수집 이미지 (폴더명 = 라벨, 45° 반측면 뷰로 통일!)
+│   ├── good/                   팀원 촬영: 이름_번호.jpg / 웹: 밑줄 없는 고유 이름.jpg
 │   ├── depth/
 │   ├── back/
+│   ├── heel/
 │   └── knee/
 └── features.csv             ← 아래 명령으로 생성되는 학습용 피처
 ```

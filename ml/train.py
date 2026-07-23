@@ -20,11 +20,13 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import GroupKFold, GroupShuffleSplit, cross_val_score
 
-FEATURES = ["knee_angle", "hip_angle", "trunk_lean"]
+FEATURES = ["knee_angle", "hip_angle", "trunk_lean", "foot_angle", "knee_ankle_ratio"]
 
 # 규칙 기반 베이스라인 (frontend CONFIG와 동일한 임계값 유지)
 DEPTH_KNEE_ANGLE = 100
 TRUNK_LEAN_MAX = 50
+HEEL_FOOT_ANGLE = 25
+KNEE_RATIO_MIN = 0.7
 
 
 def rule_based_predict(row) -> str:
@@ -32,6 +34,10 @@ def rule_based_predict(row) -> str:
         return "depth"
     if row["trunk_lean"] > TRUNK_LEAN_MAX:
         return "back"
+    if row["foot_angle"] > HEEL_FOOT_ANGLE:
+        return "heel"
+    if row["knee_ankle_ratio"] < KNEE_RATIO_MIN:
+        return "knee"
     return "good"
 
 
@@ -100,8 +106,11 @@ def main():
     print(f"\nJS 추론용 모델 저장 → {out_path} (frontend/에 복사해서 사용)")
 
 
-LABEL_KO = {"good": "정상", "depth": "깊이 부족", "back": "허리 굽음", "knee": "무릎 모임"}
-FEATURE_KO = {"knee_angle": "무릎 각도", "hip_angle": "고관절 각도", "trunk_lean": "허리 기울기"}
+LABEL_KO = {"good": "정상", "depth": "깊이 부족", "back": "허리 굽음",
+            "heel": "발뒤꿈치 들림", "knee": "무릎 모임"}
+FEATURE_KO = {"knee_angle": "무릎 각도", "hip_angle": "고관절 각도",
+              "trunk_lean": "허리 기울기", "foot_angle": "발 각도",
+              "knee_ankle_ratio": "무릎/발목 간격비"}
 
 
 def save_charts(rule_acc, ml_acc, cm, labels, importances):

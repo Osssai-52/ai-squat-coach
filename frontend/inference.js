@@ -22,7 +22,11 @@ function treePredict(node, x) {
 }
 
 // 피처 이름 매핑: 모델(snake_case, ml/features.py) ↔ 프론트(camelCase, app.js)
-const KEY_MAP = { knee_angle: "kneeAngle", hip_angle: "hipAngle", trunk_lean: "trunkLean" };
+const KEY_MAP = {
+  knee_angle: "kneeAngle", hip_angle: "hipAngle",
+  trunk_lean: "trunkLean", foot_angle: "footAngle",
+  knee_ankle_ratio: "kneeAnkleRatio",
+};
 
 // f: computeFeatures() 결과. 반환: 클래스 라벨(다수결) 또는 null(피처 결측)
 export function predictPosture(model, f) {
