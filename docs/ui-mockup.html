@@ -22,6 +22,7 @@
     --c-depth: #3987e5;  /* 깊이 부족 */
     --c-back:  #c98500;  /* 허리 굽음 */
     --c-knee:  #d55181;  /* 무릎 모임 */
+    --c-heel:  #7a5cd6;  /* 발뒤꿈치 들림 (신규 — CVD 재검증 필요) */
     --good-text: #0ca30c;
     --bad:       #d03b3b;
   }
@@ -181,16 +182,16 @@
 
         <div class="exercise-card">
           <div class="ic">🦵</div>
-          <div><b>스쿼트</b><small>측면 촬영 · 4가지 자세 오류 감지</small></div>
+          <div><b>스쿼트</b><small>45도 대각선 촬영 · 4가지 자세 오류 감지</small></div>
         </div>
 
         <div class="stance-guide">
-          <svg width="52" height="76" viewBox="0 0 52 76" aria-label="측면 스탠스 안내">
+          <svg width="52" height="76" viewBox="0 0 52 76" aria-label="45도 대각선 스탠스 안내">
             <circle cx="30" cy="10" r="7" fill="none" stroke="#c3c2b7" stroke-width="2.5"/>
             <path d="M30 17 L28 40 L20 56 L20 72 M28 40 L34 56 L34 72 M29 24 L38 38" fill="none" stroke="#c3c2b7" stroke-width="2.5" stroke-linecap="round"/>
             <path d="M4 66 h44" stroke="#2c2c2a" stroke-width="2"/>
           </svg>
-          <p><b>옆으로 서 주세요</b><br/>카메라에 몸 옆면이 보이고<br/>발끝~머리까지 전신이 화면에<br/>들어와야 합니다</p>
+          <p><b>카메라를 정면 기준 45도<br/>대각선에 놓아 주세요</b><br/>양쪽 무릎·발목과 발끝~머리까지<br/>전신이 화면에 들어와야 합니다</p>
         </div>
 
         <div>
@@ -207,7 +208,7 @@
       <h3>설계 노트</h3>
       <ul>
         <li>종목 카드는 1개지만 카드 형태로 — "확장 가능한 서비스" 인상 (발표 포인트)</li>
-        <li>측면 스탠스 안내를 시작 화면에서 미리 — 운동 화면에서 "인식 불안정" 뜨는 빈도 감소</li>
+        <li>45도 대각선 스탠스 안내를 시작 화면에서 미리 — 운동 화면에서 "인식 불안정" 뜨는 빈도 감소</li>
         <li>목표 횟수를 받아야 리포트의 "10회 중 7회"가 성립</li>
         <li>시작 버튼 누르면 카메라 권한 요청 → 운동 화면 전환</li>
       </ul>
@@ -224,7 +225,7 @@
       <div class="frame-body workout-body">
         <div class="cam-area">
           <svg width="150" height="260" viewBox="0 0 150 260" aria-label="스쿼트 자세 스켈레톤 예시">
-            <!-- 스쿼트 중인 스켈레톤 (측면) -->
+            <!-- 스쿼트 중인 스켈레톤 (45도 대각선) -->
             <circle cx="58" cy="52" r="13" fill="none" stroke="#3987e5" stroke-width="3"/>
             <path d="M62 64 L76 108 L52 150 L96 158 L96 208 M52 150 L46 204 M70 82 L40 116" fill="none" stroke="#3987e5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
             <g fill="#c98500">
@@ -293,6 +294,7 @@
             <span><i style="background:var(--c-depth)"></i>깊이 부족 2</span>
             <span><i style="background:var(--c-back)"></i>허리 굽음 1</span>
             <span><i style="background:var(--c-knee)"></i>무릎 모임 0</span>
+            <span><i style="background:var(--c-heel)"></i>발뒤꿈치 들림 0</span>
           </div>
         </div>
 

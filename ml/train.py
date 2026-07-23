@@ -17,16 +17,23 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import cross_val_score, train_test_split
 
-FEATURES = ["knee_angle", "hip_angle", "trunk_lean"]
+FEATURES = ["knee_angle", "hip_angle", "trunk_lean", "knee_valgus_ratio", "heel_lift_ratio"]
 
-# 규칙 기반 베이스라인 (frontend CONFIG와 동일한 임계값 유지)
+# 규칙 기반 베이스라인 (frontend CONFIG와 동일한 임계값·순서 유지)
 DEPTH_KNEE_ANGLE = 100
+KNEE_VALGUS_RATIO_MIN = 0.7
+HEEL_LIFT_RATIO_MAX = 0.3
 TRUNK_LEAN_MAX = 50
 
 
+# 우선순위: depth → knee → heel → back → good (app.js classifyRuleBased와 동일 순서)
 def rule_based_predict(row) -> str:
     if row["knee_angle"] > DEPTH_KNEE_ANGLE:
         return "depth"
+    if row["knee_valgus_ratio"] < KNEE_VALGUS_RATIO_MIN:
+        return "knee"
+    if row["heel_lift_ratio"] > HEEL_LIFT_RATIO_MAX:
+        return "heel"
     if row["trunk_lean"] > TRUNK_LEAN_MAX:
         return "back"
     return "good"

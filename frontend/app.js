@@ -10,7 +10,9 @@ import {
 const CONFIG = {
   // 규칙 기반 v0 임계값
   DEPTH_KNEE_ANGLE: 100,   // 최저점에서 무릎 각도가 이보다 크면 "깊이 부족"
-  TRUNK_LEAN_MAX: 50,      // 최저점에서 허리 기울기(수직 기준 도)가 이보다 크면 "허리 굽음"
+  KNEE_VALGUS_RATIO_MIN: 0.7, // 최저점에서 무릎/발목 거리 비율이 이보다 작으면 "무릎 모임" (추정치, 실측 데이터로 튜닝 필요)
+  HEEL_LIFT_RATIO_MAX: 0.3, // 최저점에서 (발끝.y - 발뒤꿈치.y)/발길이 비율이 이보다 크면 "발뒤꿈치 들림" (추정치, 실측 데이터로 튜닝 필요)
+  TRUNK_LEAN_MAX: 50,      // 최저점에서 허리 기울기(수직 기준 도)가 이보다 크면 "허리 굽음" (Forward Lean의 정적 프레임 근사치)
   // 동작 구간 판정
   STANDING_KNEE_ANGLE: 160, // 이 이상이면 서 있는 상태
   BOTTOM_ENTER_DELTA: 5,    // 무릎 각도가 이만큼 다시 커지면 최저점을 지난 것
@@ -21,10 +23,11 @@ const CONFIG = {
 
 // 클래스 메타 (ml/train.py의 클래스 코드와 동일하게 유지)
 const CLASSES = {
-  good:  { name: "정상",      msg: "좋은 자세!",          color: "var(--c-good)" },
-  depth: { name: "깊이 부족", msg: "더 깊이 앉으세요!",    color: "var(--c-depth)" },
-  back:  { name: "허리 굽음", msg: "허리를 세우세요!",     color: "var(--c-back)" },
-  knee:  { name: "무릎 모임", msg: "무릎을 벌려 주세요!",  color: "var(--c-knee)" },
+  good:  { name: "정상",         msg: "좋은 자세!",             color: "var(--c-good)" },
+  depth: { name: "깊이 부족",    msg: "더 깊이 앉으세요!",       color: "var(--c-depth)" },
+  knee:  { name: "무릎 모임",    msg: "무릎을 벌려 주세요!",     color: "var(--c-knee)" },
+  back:  { name: "허리 굽음",    msg: "허리를 세우세요!",        color: "var(--c-back)" },
+  heel:  { name: "발뒤꿈치 들림", msg: "발뒤꿈치를 붙이세요!",   color: "var(--c-heel)" },
 };
 
 // MediaPipe 랜드마크 인덱스 (33개 중 사용하는 것)
@@ -33,6 +36,8 @@ const LM = {
   L_HIP: 23, R_HIP: 24,
   L_KNEE: 25, R_KNEE: 26,
   L_ANKLE: 27, R_ANKLE: 28,
+  L_HEEL: 29, R_HEEL: 30,
+  L_FOOT_INDEX: 31, R_FOOT_INDEX: 32,
 };
 
 // ---------- DOM ----------
@@ -43,7 +48,8 @@ const ctx = canvas.getContext("2d");
 const ui = {
   screens: { start: $("screen-start"), workout: $("screen-workout"), report: $("screen-report") },
   startBtn: $("btn-start"), startStatus: $("start-status"),
-  knee: $("knee-angle"), hip: $("hip-angle"), trunk: $("trunk-lean"),
+  knee: $("knee-angle"), hip: $("hip-angle"), trunk: $("trunk-lean"), kneeValgus: $("knee-valgus"),
+  heelLift: $("heel-lift"),
   phase: $("squat-phase"), reps: $("rep-count"), goalDisplay: $("rep-goal-display"),
   repDots: $("rep-dots"),
   feedback: $("feedback"), status: $("status"),
@@ -83,13 +89,31 @@ function trunkLean(shoulder, hip) {
   return Math.abs((Math.atan2(dx, -dy) * 180) / Math.PI);
 }
 
-// 측면 촬영이므로 카메라에 가까운(가시성 높은) 쪽 관절만 사용
+// 무릎 사이 거리 / 발목 사이 거리 비율. 무릎이 발목보다 안쪽으로 모이면 1보다 작아짐.
+// 좌우 랜드마크가 둘 다 필요해서 pickSide()와 무관하게 전체 lms에서 직접 계산 (45도 촬영 전제).
+function kneeValgusRatio(lms) {
+  const kneeDist = Math.abs(lms[LM.L_KNEE].x - lms[LM.R_KNEE].x);
+  const ankleDist = Math.abs(lms[LM.L_ANKLE].x - lms[LM.R_ANKLE].x);
+  if (ankleDist === 0) return null;
+  return kneeDist / ankleDist;
+}
+
+// 발끝-발뒤꿈치 거리로 정규화한, 발뒤꿈치가 들린 정도. 값이 클수록 뒤꿈치가 지면에서 뜬 것.
+function heelLiftRatio(heel, toe) {
+  const footLen = Math.hypot(toe.x - heel.x, toe.y - heel.y);
+  if (footLen === 0) return null;
+  return (toe.y - heel.y) / footLen; // 화면 좌표: 아래로 갈수록 y 증가 → 뒤꿈치가 들리면 heel.y가 작아짐
+}
+
+// 45도 대각선 촬영이므로 카메라에 더 가까운(가시성 높은) 쪽 관절로 시상면 각도 계산
 function pickSide(lms) {
   const leftVis = (lms[LM.L_HIP].visibility ?? 0) + (lms[LM.L_KNEE].visibility ?? 0);
   const rightVis = (lms[LM.R_HIP].visibility ?? 0) + (lms[LM.R_KNEE].visibility ?? 0);
   return leftVis >= rightVis
-    ? { shoulder: lms[LM.L_SHOULDER], hip: lms[LM.L_HIP], knee: lms[LM.L_KNEE], ankle: lms[LM.L_ANKLE] }
-    : { shoulder: lms[LM.R_SHOULDER], hip: lms[LM.R_HIP], knee: lms[LM.R_KNEE], ankle: lms[LM.R_ANKLE] };
+    ? { shoulder: lms[LM.L_SHOULDER], hip: lms[LM.L_HIP], knee: lms[LM.L_KNEE], ankle: lms[LM.L_ANKLE],
+        heel: lms[LM.L_HEEL], toe: lms[LM.L_FOOT_INDEX] }
+    : { shoulder: lms[LM.R_SHOULDER], hip: lms[LM.R_HIP], knee: lms[LM.R_KNEE], ankle: lms[LM.R_ANKLE],
+        heel: lms[LM.R_HEEL], toe: lms[LM.R_FOOT_INDEX] };
 }
 
 // ---------- 인식 안정화 ----------
@@ -133,6 +157,8 @@ function computeFeatures(lms) {
     kneeAngle: angleAt(s.hip, s.knee, s.ankle),
     hipAngle: angleAt(s.shoulder, s.hip, s.knee),
     trunkLean: trunkLean(s.shoulder, s.hip),
+    kneeValgusRatio: kneeValgusRatio(lms),
+    heelLiftRatio: heelLiftRatio(s.heel, s.toe),
   };
 }
 
@@ -197,8 +223,13 @@ function updatePhase(f) {
 }
 
 // ---------- 규칙 기반 판정 v0 (2일차에 ML 모델로 교체) ----------
+// 우선순위: depth → knee → heel → back → good
+// heel을 back보다 먼저 보는 이유: 발목 가동성 부족(heel)이 상체 숙임(back)의 원인이 되는 경우가 많아
+// 근본 원인 쪽을 먼저 판정
 function classifyRuleBased(f) {
   if (f.kneeAngle > CONFIG.DEPTH_KNEE_ANGLE) return "depth";
+  if (f.kneeValgusRatio != null && f.kneeValgusRatio < CONFIG.KNEE_VALGUS_RATIO_MIN) return "knee";
+  if (f.heelLiftRatio != null && f.heelLiftRatio > CONFIG.HEEL_LIFT_RATIO_MAX) return "heel";
   if (f.trunkLean > CONFIG.TRUNK_LEAN_MAX) return "back";
   return "good";
 }
@@ -334,6 +365,8 @@ function loop() {
       ui.knee.textContent = f.kneeAngle != null ? `${f.kneeAngle.toFixed(0)}°` : "–";
       ui.hip.textContent = f.hipAngle != null ? `${f.hipAngle.toFixed(0)}°` : "–";
       ui.trunk.textContent = `${f.trunkLean.toFixed(0)}°`;
+      ui.kneeValgus.textContent = f.kneeValgusRatio != null ? f.kneeValgusRatio.toFixed(2) : "–";
+      ui.heelLift.textContent = f.heelLiftRatio != null ? f.heelLiftRatio.toFixed(2) : "–";
 
       const { bottomFeatures, repCompleted } = updatePhase(f);
       const phaseKo = { standing: "서 있음", descending: "내려가는 중", ascending: "올라오는 중" };
@@ -363,7 +396,7 @@ function loop() {
       const vis = lastAvgVisibility != null ? ` (가시성 ${lastAvgVisibility.toFixed(2)})` : "";
       ui.status.textContent = result.landmarks.length === 0
         ? "사람이 감지되지 않음 — 조명과 거리를 확인하세요"
-        : `인식 불안정 — 전신(측면)이 화면에 들어오게 서 주세요${vis}`;
+        : `인식 불안정 — 전신과 양 무릎이 화면에 들어오게 45도 대각선으로 서 주세요${vis}`;
     }
   }
   requestAnimationFrame(loop);
@@ -388,7 +421,7 @@ function renderReport() {
   // 분포 바 (등장한 클래스만, good 먼저)
   ui.distBar.innerHTML = "";
   ui.distLegend.innerHTML = "";
-  const order = ["good", "depth", "back", "knee"];
+  const order = ["good", "depth", "knee", "heel", "back"];
   const shown = order.filter((l) => (counts[l] ?? 0) > 0);
   ui.distBar.setAttribute("aria-label",
     shown.map((l) => `${CLASSES[l].name} ${counts[l]}회`).join(", "));
