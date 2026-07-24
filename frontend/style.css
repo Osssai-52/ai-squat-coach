@@ -1,17 +1,21 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* BodyBuddy 브랜드 팔레트 (로고 기반: 민트/딥그린/테라코타/피치) */
+  /* BodyBuddy 공식 브랜드 팔레트 (bodybuddy_logo 기준 — 색 추가 시 최대한 이 안에서)
+     연한 민트 #E1F5EE · 코랄 #F0997B · 진한 코랄 #D85A30
+     다크 브라운 #4A1B0C · 다크 틸 그린 #0F6E56 · 연한 핑크 #F4C0D1 */
   --bg: #e1f5ee;
   --card: #ffffff;
   --ink: #1e2b25;
   --sub: #64786e;
-  --line: #dcebe2;
-  --accent: #1a7a55;
-  --accent-soft: #ddf0e7;
-  --orange: #d95f2b;
-  --orange-soft: #fbe9df;
-  --peach: #f2a58c;
+  --line: #d3e9e0;
+  --accent: #0f6e56;      /* 다크 틸 그린 ("Body", 관절선) */
+  --accent-soft: #d7efe6;
+  --orange: #d85a30;      /* 진한 코랄 ("Buddy", 발) */
+  --orange-soft: #fae7dd;
+  --peach: #f0997b;       /* 코랄 (피부) */
+  --pink: #f4c0d1;        /* 연한 핑크 (볼터치) */
+  --brown: #4a1b0c;       /* 다크 브라운 (머리·눈) */
   --good: #12b76a;
   --warn: #e0821e;
   --bad: #e14b3b;
