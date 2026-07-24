@@ -4,11 +4,12 @@ import { validateFrame, analyzePosture, buildRecommendations, EXERCISES, initPos
 import { loadPostureModel, predictPosture } from "./inference.js";
 
 // ---------- 스쿼트 판정 설정 (팀 실측으로 튜닝) ----------
+// 임계값은 45° 실측 분포로 보정 (ml/train.py 상수와 동일 유지)
 const CONFIG = {
-  DEPTH_KNEE_ANGLE: 100,
-  TRUNK_LEAN_MAX: 50,
-  HEEL_FOOT_ANGLE: 25,
-  KNEE_RATIO_MIN: 0.7,
+  DEPTH_KNEE_ANGLE: 118,
+  TRUNK_LEAN_MAX: 45,
+  HEEL_FOOT_ANGLE: 34,
+  KNEE_RATIO_MIN: 0.65,
   STANDING_KNEE_ANGLE: 160,
   BOTTOM_ENTER_DELTA: 5,
   LANDMARK_ALPHA: 0.4,

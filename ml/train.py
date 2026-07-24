@@ -23,10 +23,11 @@ from sklearn.model_selection import GroupKFold, GroupShuffleSplit, cross_val_sco
 FEATURES = ["knee_angle", "hip_angle", "trunk_lean", "foot_angle", "knee_ankle_ratio"]
 
 # 규칙 기반 베이스라인 (frontend CONFIG와 동일한 임계값 유지)
-DEPTH_KNEE_ANGLE = 100
-TRUNK_LEAN_MAX = 50
-HEEL_FOOT_ANGLE = 25
-KNEE_RATIO_MIN = 0.7
+# 45° 실측 분포(2026-07 1차 데이터, 클래스별 평균의 중간값)로 보정한 값
+DEPTH_KNEE_ANGLE = 118   # good 97±17 vs depth 133±17
+TRUNK_LEAN_MAX = 45      # good 30 vs back 58
+HEEL_FOOT_ANGLE = 34     # 일반 24~31 vs heel 41 (45° 투영 오프셋 때문에 측면 기준 25는 부적합)
+KNEE_RATIO_MIN = 0.65    # knee 0.47±0.10 vs 나머지 0.79~0.85
 
 
 def rule_based_predict(row) -> str:
@@ -114,6 +115,8 @@ def main():
     save_charts(rule_acc, ml_acc, cm, labels, model.feature_importances_)
 
     # --- JS 추론용 모델 덤프 ---
+    # 평가(위 수치)는 홀드아웃으로, 배포 모델은 전체 데이터로 재학습 (표준 관행)
+    model.fit(X, y)
     out_dir = Path(__file__).parent / "models"
     out_dir.mkdir(exist_ok=True)
     dump = {

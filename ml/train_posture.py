@@ -75,6 +75,8 @@ def main():
     for name, imp in zip(FEATURES, model.feature_importances_):
         print(f"  {name}: {imp:.3f}")
 
+    # 평가는 홀드아웃으로, 배포 모델은 전체 데이터로 재학습
+    model.fit(X, y)
     out_dir = Path(__file__).parent / "models"
     out_dir.mkdir(exist_ok=True)
     dump = {
