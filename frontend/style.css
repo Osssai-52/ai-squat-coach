@@ -43,7 +43,17 @@ body {
   box-shadow: 0 0 40px rgba(0,0,0,0.08);
 }
 
-.view { min-height: 100dvh; display: flex; flex-direction: column; }
+/* 모든 화면 공통: 상단 왼쪽 로고 바 */
+#brand-bar {
+  height: 48px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 16px;
+}
+#brand-bar img { width: 30px; height: 30px; border-radius: 8px; }
+#brand-bar span { font-weight: 800; font-size: 1rem; letter-spacing: -0.01em; color: var(--accent); }
+#brand-bar em { font-style: normal; color: var(--orange); }
+
+.view { min-height: calc(100dvh - 48px); display: flex; flex-direction: column; }
 .hidden { display: none !important; }
 .sub { color: var(--sub); font-size: 0.9rem; }
 .small { font-size: 0.8rem; }
@@ -98,9 +108,6 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 /* ---------- 온보딩 ---------- */
 #v-onboard { justify-content: center; padding: 24px; }
 .onboard-inner { display: flex; flex-direction: column; gap: 14px; }
-.brand-logo { width: 88px; margin-bottom: 4px; }
-.brand { font-weight: 800; font-size: 1.35rem; letter-spacing: -0.01em; color: var(--accent); }
-.brand em { font-style: normal; color: var(--orange); }
 #v-onboard h1 { font-size: 1.6rem; line-height: 1.35; }
 .field-group { margin: 18px 0 6px; display: flex; flex-direction: column; gap: 12px; }
 .field span { font-size: 0.82rem; color: var(--sub); display: block; margin-bottom: 6px; }
@@ -120,6 +127,12 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 /* ---------- 탭 셸 ---------- */
 #v-shell { padding-bottom: 68px; }
 .tab-page { padding: 10px 16px 20px; flex: 1; }
+/* 체형 분석 전: CTA 박스를 화면 세로 가운데에 배치 */
+#tab-home.home-empty {
+  display: flex; flex-direction: column;
+  min-height: calc(100dvh - 48px - 68px);
+}
+#tab-home.home-empty #posture-cta { margin: auto 0; }
 .tabbar {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
   width: 100%; max-width: 430px; height: 62px;

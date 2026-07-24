@@ -1,8 +1,8 @@
-// 체형 분석: 촬영 프레임 검증 → 지표 계산 → 판정(ML 우선, 규칙 폴백) → 운동 추천
+// Posture analysis: frame validation → metrics → assessment (ML first, rule fallback) → recommendations
 import { LM, trunkLean, kneeAnkleRatio } from "./pose.js";
 import { loadPostureModel, predictPosture } from "./inference.js";
 
-// 체형 ML 모델 (ml/train_posture.py가 덤프한 posture_model.json — 없으면 규칙 기반)
+// Posture ML model (posture_model.json from ml/train_posture.py — falls back to rules if absent)
 let postureML = null;
 export async function initPostureML() {
   postureML = await loadPostureModel("posture_model.json");
@@ -10,7 +10,7 @@ export async function initPostureML() {
 }
 export function isPostureML() { return !!postureML; }
 
-// ---------- 촬영 프레임 검증 (부위 누락 안내) ----------
+// ---------- Capture frame validation (missing-body-part guidance) ----------
 const FRAME_MARGIN = 0.02;
 
 function landmarkVisible(p) {
@@ -22,16 +22,16 @@ function landmarkVisible(p) {
 }
 
 const PART_CHECKS = [
-  { ids: [LM.NOSE, LM.L_EAR, LM.R_EAR], any: true, msg: "머리까지 화면에 나오게 해주세요" },
-  { ids: [LM.L_SHOULDER, LM.R_SHOULDER], any: false, msg: "어깨가 가려지지 않게 서 주세요" },
-  { ids: [LM.L_HIP, LM.R_HIP], any: false, msg: "몸 전체가 화면에 들어오게 해주세요" },
-  { ids: [LM.L_KNEE, LM.R_KNEE], any: false, msg: "무릎까지 나오도록 뒤로 물러나 주세요" },
-  { ids: [LM.L_ANKLE, LM.R_ANKLE, LM.L_FOOT, LM.R_FOOT], any: false, msg: "발까지 전신이 나오도록 뒤로 물러나 주세요" },
+  { ids: [LM.NOSE, LM.L_EAR, LM.R_EAR], any: true, msg: "Make sure your head is in the frame" },
+  { ids: [LM.L_SHOULDER, LM.R_SHOULDER], any: false, msg: "Keep your shoulders visible" },
+  { ids: [LM.L_HIP, LM.R_HIP], any: false, msg: "Fit your whole body in the frame" },
+  { ids: [LM.L_KNEE, LM.R_KNEE], any: false, msg: "Step back so your knees are visible" },
+  { ids: [LM.L_ANKLE, LM.R_ANKLE, LM.L_FOOT, LM.R_FOOT], any: false, msg: "Step back until your feet are in the frame" },
 ];
 
-// 반환: { ok: true } 또는 { ok: false, msg: "안내 문구" }
+// Returns { ok: true } or { ok: false, msg: "guidance" }
 export function validateFrame(lms) {
-  if (!lms) return { ok: false, msg: "사람이 인식되지 않아요. 밝은 곳에서 전신이 보이게 서 주세요" };
+  if (!lms) return { ok: false, msg: "No one detected. Make sure your full body is visible in good lighting" };
   for (const check of PART_CHECKS) {
     const results = check.ids.map((i) => landmarkVisible(lms[i]));
     const pass = check.any ? results.some(Boolean) : results.every(Boolean);
@@ -40,22 +40,22 @@ export function validateFrame(lms) {
   return { ok: true };
 }
 
-// ---------- 체형 지표 계산 ----------
-// 임계값은 초기 추정치 — 팀원 실측(정상 자세/과장 자세)으로 튜닝 필요
+// ---------- Posture metrics ----------
+// Thresholds are initial estimates — tune with team measurements (normal vs exaggerated poses)
 const T = {
-  FORWARD_HEAD: 0.12,   // 귀-어깨 수평 오프셋 / 몸통 길이
-  ROUND_SHOULDER: 0.10, // 어깨-엉덩이 수평 오프셋 / 몸통 길이
-  TRUNK_LEAN: 8,        // 상체 기울기(도)
-  TILT: 0.045,          // 좌우 높이차 / 어깨 너비
-  KNEE_IN: 0.75,        // 무릎/발목 간격비 하한 (X다리 경향)
-  KNEE_OUT: 1.45,       // 무릎/발목 간격비 상한 (O다리 경향)
+  FORWARD_HEAD: 0.12,   // ear-shoulder horizontal offset / torso length
+  ROUND_SHOULDER: 0.10, // shoulder-hip horizontal offset / torso length
+  TRUNK_LEAN: 8,        // torso tilt (degrees)
+  TILT: 0.045,          // left-right height difference / width
+  KNEE_IN: 0.75,        // knee/ankle gap ratio lower bound (knees caving in)
+  KNEE_OUT: 1.45,       // knee/ankle gap ratio upper bound (knees bowing out)
 };
 
 function mid(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
-// side: 측면 사진 랜드마크 / front: 정면 사진 랜드마크
-// 반환: 항목 리스트 [{key, name, value, unit, status: "ok"|"warn", desc}]
+// side: side-view landmarks / front: front-view landmarks
+// Returns items: [{key, name, value, unit, status: "ok"|"warn", desc}]
 export function analyzePosture({ front, side }) {
   const items = [];
 
@@ -70,7 +70,7 @@ export function analyzePosture({ front, side }) {
       const rs = Math.abs(sh.x - hip.x) / torso;
       const lean = trunkLean(sh, hip);
 
-      // ML 모델이 있으면 분류 결과로 판정, 없으면 임계값 규칙
+      // Use ML classification when a model is present, threshold rules otherwise
       let neckWarn = fh > T.FORWARD_HEAD;
       let shoulderWarn = rs > T.ROUND_SHOULDER;
       if (postureML) {
@@ -82,28 +82,28 @@ export function analyzePosture({ front, side }) {
       }
 
       items.push({
-        key: "forwardHead", name: "목 정렬", value: (fh * 100).toFixed(0), unit: "%",
+        key: "forwardHead", name: "Neck Alignment", value: (fh * 100).toFixed(0), unit: "%",
         status: neckWarn ? "warn" : "ok",
         desc: neckWarn
-          ? "머리가 어깨보다 앞으로 나와 있어요 (거북목 경향)"
-          : "귀와 어깨가 잘 정렬되어 있어요",
+          ? "Your head sits forward of your shoulders (forward head posture)"
+          : "Ears and shoulders are well aligned",
       });
       items.push({
-        key: "roundShoulder", name: "어깨 정렬", value: (rs * 100).toFixed(0), unit: "%",
+        key: "roundShoulder", name: "Shoulder Alignment", value: (rs * 100).toFixed(0), unit: "%",
         status: shoulderWarn ? "warn" : "ok",
         desc: shoulderWarn
-          ? "어깨가 앞으로 말려 있어요 (라운드 숄더 경향)"
-          : "어깨가 골반 위에 잘 놓여 있어요",
+          ? "Your shoulders roll forward (rounded shoulders)"
+          : "Shoulders sit nicely over your hips",
       });
     }
 
     const lean = trunkLean(sh, hip);
     items.push({
-      key: "trunk", name: "상체 기울기", value: lean.toFixed(0), unit: "°",
+      key: "trunk", name: "Torso Tilt", value: lean.toFixed(0), unit: "°",
       status: lean > T.TRUNK_LEAN ? "warn" : "ok",
       desc: lean > T.TRUNK_LEAN
-        ? "상체가 앞뒤로 기울어 있어요 (척추 정렬 주의)"
-        : "상체가 곧게 서 있어요",
+        ? "Your torso leans noticeably — watch your spine alignment"
+        : "You're standing nice and tall",
     });
   }
 
@@ -112,29 +112,29 @@ export function analyzePosture({ front, side }) {
     if (shoulderW > 1e-6) {
       const st = Math.abs(front[LM.L_SHOULDER].y - front[LM.R_SHOULDER].y) / shoulderW;
       items.push({
-        key: "shoulderTilt", name: "어깨 수평", value: (st * 100).toFixed(1), unit: "%",
+        key: "shoulderTilt", name: "Shoulder Level", value: (st * 100).toFixed(1), unit: "%",
         status: st > T.TILT ? "warn" : "ok",
-        desc: st > T.TILT ? "좌우 어깨 높이에 차이가 있어요" : "어깨 높이가 수평에 가까워요",
+        desc: st > T.TILT ? "One shoulder sits higher than the other" : "Shoulders are nearly level",
       });
     }
     const hipW = dist(front[LM.L_HIP], front[LM.R_HIP]);
     if (hipW > 1e-6) {
       const pt = Math.abs(front[LM.L_HIP].y - front[LM.R_HIP].y) / hipW;
       items.push({
-        key: "pelvisTilt", name: "골반 수평", value: (pt * 100).toFixed(1), unit: "%",
+        key: "pelvisTilt", name: "Pelvis Level", value: (pt * 100).toFixed(1), unit: "%",
         status: pt > T.TILT ? "warn" : "ok",
-        desc: pt > T.TILT ? "좌우 골반 높이에 차이가 있어요" : "골반이 수평에 가까워요",
+        desc: pt > T.TILT ? "One hip sits higher than the other" : "Hips are nearly level",
       });
     }
     const ratio = kneeAnkleRatio(front);
     if (ratio != null) {
       const warn = ratio < T.KNEE_IN || ratio > T.KNEE_OUT;
       items.push({
-        key: "legAlign", name: "다리 정렬", value: ratio.toFixed(2), unit: "",
+        key: "legAlign", name: "Leg Alignment", value: ratio.toFixed(2), unit: "",
         status: warn ? "warn" : "ok",
-        desc: ratio < T.KNEE_IN ? "무릎이 안쪽으로 모이는 경향이 있어요"
-          : ratio > T.KNEE_OUT ? "무릎이 바깥으로 벌어지는 경향이 있어요"
-          : "무릎과 발목 정렬이 좋아요",
+        desc: ratio < T.KNEE_IN ? "Your knees tend to cave inward"
+          : ratio > T.KNEE_OUT ? "Your knees tend to bow outward"
+          : "Knees and ankles line up well",
       });
     }
   }
@@ -142,89 +142,89 @@ export function analyzePosture({ front, side }) {
   return items;
 }
 
-// ---------- 운동 라이브러리 ----------
+// ---------- Exercise library ----------
 export const EXERCISES = {
   squat: {
-    name: "스쿼트", tag: "하체 · 전신 근력", live: true,
-    summary: "하체와 코어를 한 번에 강화하는 기본 운동. 실시간 자세 분석을 지원해요.",
+    name: "Squat", tag: "Legs · Full body", live: true,
+    summary: "The all-in-one move for legs and core — with real-time form analysis.",
     steps: [
-      "발을 어깨너비로 벌리고 발끝을 살짝 바깥으로 둡니다",
-      "가슴을 펴고 시선은 정면을 유지합니다",
-      "엉덩이를 뒤로 빼며 허벅지가 수평이 될 때까지 앉습니다",
-      "무릎이 발끝 방향과 같은 방향을 향하게 유지합니다",
-      "발뒤꿈치로 바닥을 밀며 일어섭니다",
+      "Stand with feet shoulder-width apart, toes slightly out",
+      "Keep your chest up and eyes forward",
+      "Push your hips back and sink until your thighs are parallel to the floor",
+      "Keep your knees tracking in line with your toes",
+      "Drive through your heels to stand back up",
     ],
-    dose: "10회 × 3세트, 세트 사이 60초 휴식",
+    dose: "10 reps × 3 sets, rest 60s between sets",
   },
   plank: {
-    name: "플랭크", tag: "코어 안정화",
-    summary: "척추를 곧게 유지하는 힘을 기르는 정적 코어 운동.",
+    name: "Plank", tag: "Core stability",
+    summary: "A static core hold that builds the strength to keep your spine tall.",
     steps: [
-      "팔꿈치를 어깨 아래에 두고 엎드립니다",
-      "머리부터 발끝까지 일직선을 만듭니다",
-      "배에 힘을 주고 허리가 꺼지지 않게 버팁니다",
-      "호흡을 멈추지 않습니다",
+      "Place your elbows under your shoulders and lie face down",
+      "Form a straight line from head to heels",
+      "Brace your abs and don't let your hips sag",
+      "Keep breathing throughout",
     ],
-    dose: "30초 × 3세트부터 시작, 점차 늘리기",
+    dose: "Start with 30s × 3 sets, build up gradually",
   },
   bandPullApart: {
-    name: "밴드 풀어파트", tag: "등 상부 · 어깨",
-    summary: "말린 어깨를 뒤로 되돌리는 등 상부 강화 운동.",
+    name: "Band Pull-Apart", tag: "Upper back · Shoulders",
+    summary: "Strengthens the upper back to pull rounded shoulders back where they belong.",
     steps: [
-      "밴드를 어깨너비로 잡고 팔을 앞으로 뻗습니다",
-      "팔꿈치를 편 채 밴드를 가슴 높이에서 양옆으로 당깁니다",
-      "어깨뼈를 뒤로 모은다는 느낌으로 2초 유지",
-      "천천히 돌아옵니다",
+      "Hold a band at shoulder width, arms extended forward",
+      "Keeping elbows straight, pull the band apart at chest height",
+      "Squeeze your shoulder blades together and hold for 2 seconds",
+      "Return slowly",
     ],
-    dose: "15회 × 3세트",
+    dose: "15 reps × 3 sets",
   },
   wallAngel: {
-    name: "벽 천사", tag: "어깨 가동성 · 자세",
-    summary: "벽에 등을 대고 팔을 올렸다 내리며 어깨·등 정렬을 회복하는 운동.",
+    name: "Wall Angel", tag: "Shoulder mobility · Posture",
+    summary: "Slide your arms along a wall to restore shoulder and upper-back alignment.",
     steps: [
-      "벽에 뒤통수·등·엉덩이를 붙이고 섭니다",
-      "팔꿈치를 90도로 굽혀 벽에 붙입니다",
-      "벽에서 떨어지지 않게 팔을 천천히 위로 올립니다",
-      "천천히 내리며 반복합니다",
+      "Stand with your head, back, and hips against a wall",
+      "Bend your elbows to 90° and press them to the wall",
+      "Slide your arms up slowly without losing wall contact",
+      "Lower slowly and repeat",
     ],
-    dose: "10회 × 3세트",
+    dose: "10 reps × 3 sets",
   },
   hipBridge: {
-    name: "힙 브릿지", tag: "둔근 · 골반 안정화",
-    summary: "골반을 안정시키고 둔근을 깨우는 기초 운동.",
+    name: "Hip Bridge", tag: "Glutes · Pelvic stability",
+    summary: "Wakes up the glutes and stabilizes the pelvis.",
     steps: [
-      "누워서 무릎을 세우고 발을 골반너비로 둡니다",
-      "발뒤꿈치로 바닥을 누르며 엉덩이를 들어 올립니다",
-      "어깨-골반-무릎이 일직선이 되면 2초 유지",
-      "천천히 내립니다",
+      "Lie on your back, knees bent, feet hip-width apart",
+      "Press through your heels and lift your hips",
+      "Hold 2 seconds when shoulders, hips, and knees form a line",
+      "Lower slowly",
     ],
-    dose: "12회 × 3세트",
+    dose: "12 reps × 3 sets",
   },
   clamshell: {
-    name: "클램쉘", tag: "둔근 · 무릎 정렬",
-    summary: "무릎이 안쪽으로 모이는 습관을 잡아주는 엉덩이 옆 근육 운동.",
+    name: "Clamshell", tag: "Glutes · Knee alignment",
+    summary: "Targets the outer glutes that keep your knees from caving inward.",
     steps: [
-      "옆으로 누워 무릎을 45도로 굽힙니다",
-      "발뒤꿈치를 붙인 채 위쪽 무릎을 천장으로 엽니다",
-      "골반이 뒤로 돌아가지 않게 고정합니다",
-      "천천히 닫습니다",
+      "Lie on your side with knees bent at 45°",
+      "Keeping heels together, open your top knee toward the ceiling",
+      "Don't let your pelvis roll backward",
+      "Close slowly",
     ],
-    dose: "한쪽 15회 × 3세트",
+    dose: "15 reps per side × 3 sets",
   },
   sidePlank: {
-    name: "사이드 플랭크", tag: "옆구리 · 좌우 균형",
-    summary: "좌우 비대칭을 잡아주는 옆면 코어 운동.",
+    name: "Side Plank", tag: "Obliques · Balance",
+    summary: "A side core hold that evens out left-right imbalances.",
     steps: [
-      "옆으로 누워 팔꿈치를 어깨 아래에 둡니다",
-      "골반을 들어 머리-골반-발이 일직선이 되게 합니다",
-      "약한 쪽을 한 세트 더 합니다",
+      "Lie on your side with your elbow under your shoulder",
+      "Lift your hips until head, hips, and feet form a line",
+      "Do one extra set on your weaker side",
     ],
-    dose: "한쪽 20초 × 3세트",
+    dose: "20s per side × 3 sets",
   },
 };
 
-// 체형 분석 결과 → 추천 운동 2~3개
-// 스쿼트는 실시간 교정 지원 운동이라 항상 포함 (자리 보장), 나머지는 주의 항목 기준 최대 2개
+// Scan results → 2-3 recommended exercises
+// Squat always included (it has live form check); up to 2 others based on flagged items
 export function buildRecommendations(items) {
   const warn = new Set(items.filter((i) => i.status === "warn").map((i) => i.key));
   const others = [];
@@ -232,23 +232,23 @@ export function buildRecommendations(items) {
     if (others.length < 2 && !others.some((p) => p.key === key)) others.push({ key, reason });
   };
 
-  if (warn.has("legAlign")) add("clamshell", "무릎 정렬 습관을 잡아줘요");
+  if (warn.has("legAlign")) add("clamshell", "Helps correct knees caving inward");
   if (warn.has("forwardHead") || warn.has("roundShoulder")) {
-    add("bandPullApart", "말린 어깨를 뒤로 되돌리는 데 효과적이에요");
-    add("wallAngel", "어깨·목 정렬 회복에 도움이 돼요");
+    add("bandPullApart", "Great for pulling rounded shoulders back");
+    add("wallAngel", "Restores shoulder and neck alignment");
   }
-  if (warn.has("trunk")) add("plank", "척추를 곧게 유지하는 코어 힘을 길러줘요");
+  if (warn.has("trunk")) add("plank", "Builds the core strength to stand tall");
   if (warn.has("shoulderTilt") || warn.has("pelvisTilt")) {
-    add("sidePlank", "좌우 균형을 잡는 데 도움이 돼요");
-    add("hipBridge", "골반 안정화에 좋아요");
+    add("sidePlank", "Helps balance left-right asymmetry");
+    add("hipBridge", "Good for pelvic stability");
   }
-  if (others.length === 0) add("plank", "코어의 기본 운동이에요");
+  if (others.length === 0) add("plank", "A core essential for everyone");
 
   const squat = {
     key: "squat",
     reason: warn.has("legAlign")
-      ? "다리 정렬을 실시간으로 확인하며 할 수 있어요"
-      : "하체 근력의 기본 운동이에요",
+      ? "Check your knee alignment in real time"
+      : "The foundation of lower-body strength",
   };
   return [squat, ...others];
 }
