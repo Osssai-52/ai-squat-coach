@@ -2,7 +2,7 @@
 
 :root {
   /* BodyBuddy 브랜드 팔레트 (로고 기반: 민트/딥그린/테라코타/피치) */
-  --bg: #eef7f2;
+  --bg: #e1f5ee;
   --card: #ffffff;
   --ink: #1e2b25;
   --sub: #64786e;
@@ -27,7 +27,7 @@
 html, body { height: 100%; }
 body {
   font-family: "Pretendard", system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
-  background: #e0ede6;
+  background: #d2e7df;
   color: var(--ink);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
