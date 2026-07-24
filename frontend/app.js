@@ -12,7 +12,12 @@ const CONFIG = {
   KNEE_RATIO_MIN: 0.65,
   STANDING_KNEE_ANGLE: 160,
   BOTTOM_ENTER_DELTA: 5,
+  REP_MIN_DEPTH: 140,      // 최저 무릎 각도가 이보다 크면 렙으로 인정 안 함 (까딱임 무시)
   LANDMARK_ALPHA: 0.4,
+  // 발 각도 세션 캘리브레이션: 서 있을 때 기준선을 잡고, 판정 시
+  // "학습 사진의 평발 평균(26°)" 기준으로 환산 — 카메라 세팅 차이에 의한 heel 오탐 방지
+  FOOT_ANGLE_REF: 26,
+  BASELINE_ALPHA: 0.1,
 };
 
 const CLASSES = {
@@ -242,9 +247,22 @@ let workoutStream = null;
 let smoothedLms = null;
 let feedbackTimer = null;
 
-const squat = { phase: "standing", prevKnee: null, minKneeThisRep: 999, bottomFeatures: null, reps: 0 };
+const squat = { phase: "standing", prevKnee: null, minKneeThisRep: 999, bottomFeatures: null, reps: 0, footBaseline: null };
 function resetSquat() {
-  Object.assign(squat, { phase: "standing", prevKnee: null, minKneeThisRep: 999, bottomFeatures: null, reps: 0 });
+  Object.assign(squat, { phase: "standing", prevKnee: null, minKneeThisRep: 999, bottomFeatures: null, reps: 0, footBaseline: null });
+}
+
+// 서 있는 동안 발 각도 기준선 수집 (EMA)
+function updateFootBaseline(f) {
+  if (f.footAngle == null) return;
+  if (squat.footBaseline == null) squat.footBaseline = f.footAngle;
+  else squat.footBaseline += CONFIG.BASELINE_ALPHA * (f.footAngle - squat.footBaseline);
+}
+
+// 판정 직전 발 각도를 학습 사진 분포 기준으로 환산
+function calibrateFeatures(f) {
+  if (f.footAngle == null || squat.footBaseline == null) return f;
+  return { ...f, footAngle: f.footAngle - squat.footBaseline + CONFIG.FOOT_ANGLE_REF };
 }
 
 function smoothLandmarks(lms) {
@@ -267,18 +285,28 @@ function updatePhase(f) {
   const delta = squat.prevKnee == null ? 0 : k - squat.prevKnee;
   squat.prevKnee = k;
   let bottomFeatures = null, repCompleted = false;
+  // 충분히 앉았는지 (얕은 까딱임은 렙/판정 대상이 아님)
+  const deepEnough = () => squat.minKneeThisRep <= CONFIG.REP_MIN_DEPTH;
+
   switch (squat.phase) {
     case "standing":
+      updateFootBaseline(f); // 서 있는 동안 발 각도 기준선 갱신
       if (k < CONFIG.STANDING_KNEE_ANGLE - 10) {
         squat.phase = "descending"; squat.minKneeThisRep = k; squat.bottomFeatures = null;
       }
       break;
     case "descending":
       if (k < squat.minKneeThisRep) { squat.minKneeThisRep = k; squat.bottomFeatures = { ...f }; }
-      if (delta > CONFIG.BOTTOM_ENTER_DELTA) { squat.phase = "ascending"; bottomFeatures = squat.bottomFeatures; }
+      if (delta > CONFIG.BOTTOM_ENTER_DELTA) {
+        squat.phase = "ascending";
+        if (deepEnough()) bottomFeatures = squat.bottomFeatures; // 얕으면 판정 생략
+      }
       break;
     case "ascending":
-      if (k >= CONFIG.STANDING_KNEE_ANGLE) { squat.phase = "standing"; squat.reps += 1; repCompleted = true; }
+      if (k >= CONFIG.STANDING_KNEE_ANGLE) {
+        squat.phase = "standing";
+        if (deepEnough()) { squat.reps += 1; repCompleted = true; } // 얕으면 렙 미인정
+      }
       if (delta < -CONFIG.BOTTOM_ENTER_DELTA) squat.phase = "descending";
       break;
   }
@@ -395,7 +423,9 @@ function loop() {
       $("knee-angle").textContent = f.kneeAngle != null ? `${f.kneeAngle.toFixed(0)}°` : "–";
       $("hip-angle").textContent = f.hipAngle != null ? `${f.hipAngle.toFixed(0)}°` : "–";
       $("trunk-lean").textContent = `${f.trunkLean.toFixed(0)}°`;
-      $("foot-angle").textContent = f.footAngle != null ? `${f.footAngle.toFixed(0)}°` : "–";
+      $("foot-angle").textContent = f.footAngle == null ? "–"
+        : squat.footBaseline == null ? `${f.footAngle.toFixed(0)}°`
+        : `${f.footAngle.toFixed(0)}° (보정 ${calibrateFeatures(f).footAngle.toFixed(0)}°)`;
       $("knee-ratio").textContent = f.kneeAnkleRatio != null ? f.kneeAnkleRatio.toFixed(2) : "–";
 
       const { bottomFeatures, repCompleted } = updatePhase(f);
@@ -404,7 +434,8 @@ function loop() {
       $("rep-count").textContent = squat.reps;
 
       if (bottomFeatures) {
-        const label = classifyPosture(bottomFeatures);
+        const calibrated = calibrateFeatures(bottomFeatures);
+        const label = classifyPosture(calibrated);
         session.pendingResult = { label, kneeAngle: bottomFeatures.kneeAngle };
         showFeedback(label);
       }
