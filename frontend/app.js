@@ -45,7 +45,7 @@ const store = {
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
-const VIEWS = ["v-login", "v-onboard", "v-shell", "v-capture", "v-result", "v-exercise", "v-squat-setup", "v-workout", "v-report"];
+const VIEWS = ["v-login", "v-onboard", "v-shell", "v-capture", "v-result", "v-exlist", "v-exercise", "v-squat-setup", "v-workout", "v-report"];
 function showView(id) {
   for (const v of VIEWS) $(v).classList.toggle("hidden", v !== id);
 }
@@ -106,8 +106,8 @@ function renderHome() {
     : "Scan your posture and get workouts made for you";
 
   const posture = store.get("posture", null);
-  $("tab-home").classList.toggle("home-empty", !posture); // 분석 전엔 CTA 박스를 세로 가운데로
-  $("posture-cta").classList.toggle("hidden", !!posture);
+  $("tab-home").classList.toggle("home-empty", !posture); // 분석 전엔 진입 카드 2개가 화면을 채움
+  $("card-scan").classList.toggle("hidden", !!posture);   // 분석 후엔 요약+추천이 스캔 카드를 대체
   $("posture-summary").classList.toggle("hidden", !posture);
   $("reco-section").classList.toggle("hidden", !posture);
   if (!posture) return;
@@ -130,7 +130,22 @@ function renderHome() {
     card.innerHTML =
       `<div class="t"><b>${ex.name}${ex.live ? ' <span class="live-badge">LIVE</span>' : ""}</b>` +
       `<p>${pick.reason}</p></div><span class="arrow">›</span>`;
-    card.addEventListener("click", () => openExercise(pick.key));
+    card.addEventListener("click", () => openExercise(pick.key, "home"));
+    list.appendChild(card);
+  }
+}
+
+// ---------- 운동 라이브러리 (바로 운동하기 경로) ----------
+function renderExerciseList() {
+  const list = $("exlist");
+  list.innerHTML = "";
+  for (const [key, ex] of Object.entries(EXERCISES)) {
+    const card = document.createElement("button");
+    card.className = "reco-card";
+    card.innerHTML =
+      `<div class="t"><b>${ex.name}${ex.live ? ' <span class="live-badge">LIVE</span>' : ""}</b>` +
+      `<p>${ex.tag}</p></div><span class="arrow">›</span>`;
+    card.addEventListener("click", () => openExercise(key, "list"));
     list.appendChild(card);
   }
 }
@@ -217,14 +232,17 @@ function renderResult(items) {
   }
 }
 
-$("btn-analyze").addEventListener("click", startCapture);
+$("card-scan").addEventListener("click", startCapture);
 $("btn-reanalyze").addEventListener("click", startCapture);
+$("card-quick").addEventListener("click", () => { renderExerciseList(); showView("v-exlist"); });
 $("btn-to-reco").addEventListener("click", () => { showView("v-shell"); showTab("home"); });
 
 // ---------- 운동 상세 ----------
 let currentExercise = null;
-function openExercise(key) {
+let exerciseOrigin = "home"; // "home"(추천 목록에서) | "list"(운동 라이브러리에서) — 뒤로가기 목적지
+function openExercise(key, origin = "home") {
   currentExercise = key;
+  exerciseOrigin = origin;
   const ex = EXERCISES[key];
   $("ex-title").textContent = ex.name;
   $("ex-tag").textContent = ex.tag;
@@ -643,7 +661,11 @@ document.querySelectorAll(".tab-btn").forEach((b) =>
 const BACK_TARGET = {
   "v-capture": () => { stopCapture(); showView("v-shell"); showTab("home"); },
   "v-result": () => { showView("v-shell"); showTab("home"); },
-  "v-exercise": () => { showView("v-shell"); showTab("home"); },
+  "v-exlist": () => { showView("v-shell"); showTab("home"); },
+  "v-exercise": () => {
+    if (exerciseOrigin === "list") showView("v-exlist");
+    else { showView("v-shell"); showTab("home"); }
+  },
   "v-squat-setup": () => showView("v-exercise"),
 };
 document.querySelectorAll("[data-back]").forEach((b) =>

@@ -64,13 +64,11 @@
         <p id="home-sub" class="sub">Scan your posture and get workouts made for you</p>
       </header>
 
-      <div id="posture-cta" class="card cta-card">
-        <div>
-          <b>Posture Scan</b>
-          <p>Two photos — front and side —<br/>to check your body alignment</p>
-        </div>
-        <button id="btn-analyze" class="btn primary">Start Scan</button>
-      </div>
+      <button id="card-scan" class="card entry-card">
+        <b>Posture Scan + Workout Picks</b>
+        <p>Two photos — front and side — to check your alignment and get workouts made for you</p>
+        <span class="entry-go">Start Scan ›</span>
+      </button>
 
       <div id="posture-summary" class="card hidden">
         <div class="card-head">
@@ -84,6 +82,12 @@
         <h2 class="section-title">Recommended for You</h2>
         <div id="reco-list" class="reco-list"></div>
       </div>
+
+      <button id="card-quick" class="card entry-card quick">
+        <b>Just Work Out</b>
+        <p>Skip the scan and jump straight into exercises</p>
+        <span class="entry-go orange">Browse Exercises ›</span>
+      </button>
     </main>
 
     <!-- History tab -->
@@ -159,6 +163,14 @@
       <ul id="result-list" class="metric-list card"></ul>
       <p class="sub small center">Measurements vary with camera angle. Rescan in the same setup to track real changes.</p>
       <button id="btn-to-reco" class="btn primary big">See My Workouts</button>
+    </div>
+  </section>
+
+  <!-- ========== Exercise library (quick workout) ========== -->
+  <section id="v-exlist" class="view hidden">
+    <header class="top-nav"><button class="btn back" data-back>‹</button><b>Exercises</b></header>
+    <div class="page-body">
+      <div id="exlist" class="reco-list"></div>
     </div>
   </section>
 

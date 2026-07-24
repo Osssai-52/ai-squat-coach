@@ -142,12 +142,12 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 /* ---------- 탭 셸 ---------- */
 #v-shell { padding-bottom: 68px; }
 .tab-page { padding: 10px 16px 20px; flex: 1; }
-/* 체형 분석 전: CTA 박스를 화면 세로 가운데에 배치 */
+/* 체형 분석 전: 진입 카드 2개가 화면을 채우도록 */
 #tab-home.home-empty {
   display: flex; flex-direction: column;
   min-height: calc(100dvh - 48px - 68px);
 }
-#tab-home.home-empty #posture-cta { margin: auto 0; }
+#tab-home.home-empty .entry-card { flex: 1; }
 .tabbar {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
   width: 100%; max-width: 430px; height: 62px;
@@ -163,9 +163,17 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 .tab-btn svg { width: 23px; height: 23px; fill: currentColor; stroke: currentColor; }
 .tab-btn.on { color: var(--accent); font-weight: 600; }
 
-.cta-card { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.cta-card b { font-size: 1.02rem; }
-.cta-card p { color: var(--sub); font-size: 0.86rem; margin-top: 4px; }
+/* 홈 진입 카드 2종: 체형 분석 플로우 / 바로 운동 */
+.entry-card {
+  display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  min-height: 148px; width: 100%; padding: 22px;
+  text-align: left; border: none; cursor: pointer; font-family: inherit;
+}
+.entry-card:active { transform: scale(0.99); }
+.entry-card b { font-size: 1.08rem; color: var(--ink); }
+.entry-card p { color: var(--sub); font-size: 0.88rem; }
+.entry-go { color: var(--accent); font-weight: 700; font-size: 0.9rem; margin-top: 6px; }
+.entry-go.orange { color: var(--orange); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip-row .pill {
   font-size: 0.8rem; border-radius: 10px; padding: 5px 11px; font-weight: 500;
