@@ -6,6 +6,7 @@
   <title>BodyBuddy</title>
   <link rel="icon" href="logo.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="style.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <div id="app">
@@ -16,8 +17,23 @@
     <span>Body<em>Buddy</em></span>
   </div>
 
+  <!-- ========== Sign in ========== -->
+  <section id="v-login" class="view hidden">
+    <div class="onboard-inner login-inner">
+      <img class="login-logo" src="logo.png" onerror="this.onerror=null;this.src='logo.svg'" alt="" />
+      <h1>Meet your body's<br/>new best friend</h1>
+      <p class="sub">Sign in to keep your scans and progress in one place</p>
+      <div id="gsi-btn" class="gsi-btn"></div>
+      <p id="login-note" class="sub small hidden">
+        Google sign-in isn't configured yet.<br/>
+        Add your OAuth client ID in <b>frontend/auth.js</b> (see the comments there).
+      </p>
+      <button id="btn-dev-skip" class="btn text hidden">Continue without account (dev)</button>
+    </div>
+  </section>
+
   <!-- ========== Onboarding ========== -->
-  <section id="v-onboard" class="view">
+  <section id="v-onboard" class="view hidden">
     <div class="onboard-inner">
       <h1>Workouts that fit your body,<br/>starting with a posture scan</h1>
       <p class="sub">Adding your info makes the analysis more accurate. Feel free to skip.</p>
@@ -91,7 +107,12 @@
 
       <div class="card">
         <div class="card-head"><b>My Info</b><button id="btn-edit-profile" class="btn text small">Edit</button></div>
+        <div id="account-row" class="account-row hidden">
+          <img id="account-avatar" alt="" />
+          <div><b id="account-name"></b><div id="account-email" class="sub small"></div></div>
+        </div>
         <div id="profile-line" class="sub">Not set</div>
+        <button id="btn-signout" class="btn text small signout">Sign out</button>
       </div>
     </main>
 

@@ -106,8 +106,19 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 .empty { color: var(--sub); font-size: 0.86rem; list-style: none; padding: 6px 0; }
 
 /* ---------- 온보딩 ---------- */
-#v-onboard { justify-content: center; padding: 24px; }
+#v-onboard, #v-login { justify-content: center; padding: 24px; }
 .onboard-inner { display: flex; flex-direction: column; gap: 14px; }
+
+/* 로그인 화면 */
+.login-inner { align-items: center; text-align: center; }
+.login-logo { width: 120px; border-radius: 28px; margin-bottom: 6px; }
+.gsi-btn { min-height: 44px; margin-top: 14px; display: flex; justify-content: center; }
+#login-note { line-height: 1.6; }
+
+/* 계정 표시 (My Info) */
+.account-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.account-row img { width: 42px; height: 42px; border-radius: 50%; background: var(--bg); }
+.btn.signout { color: var(--bad); padding: 8px 0 0; }
 #v-onboard h1 { font-size: 1.6rem; line-height: 1.35; }
 .field-group { margin: 18px 0 6px; display: flex; flex-direction: column; gap: 12px; }
 .field span { font-size: 0.82rem; color: var(--sub); display: block; margin-bottom: 6px; }

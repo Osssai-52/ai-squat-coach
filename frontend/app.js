@@ -2,6 +2,7 @@
 import { getLandmarker, computeSquatFeatures, PoseLandmarker, DrawingUtils } from "./pose.js";
 import { validateFrame, analyzePosture, buildRecommendations, EXERCISES, initPostureML, isPostureML } from "./posture.js";
 import { loadPostureModel, predictPosture } from "./inference.js";
+import { initGoogleSignIn, googleSignOut } from "./auth.js";
 
 // ---------- 스쿼트 판정 설정 (팀 실측으로 튜닝) ----------
 // 임계값은 45° 실측 분포로 보정 (ml/train.py 상수와 동일 유지)
@@ -44,7 +45,7 @@ const store = {
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
-const VIEWS = ["v-onboard", "v-shell", "v-capture", "v-result", "v-exercise", "v-squat-setup", "v-workout", "v-report"];
+const VIEWS = ["v-login", "v-onboard", "v-shell", "v-capture", "v-result", "v-exercise", "v-squat-setup", "v-workout", "v-report"];
 function showView(id) {
   for (const v of VIEWS) $(v).classList.toggle("hidden", v !== id);
 }
@@ -94,6 +95,10 @@ $("btn-onboard-skip").addEventListener("click", () => finishOnboard(false));
 
 // ---------- 홈 탭 ----------
 function renderHome() {
+  const user = store.get("user", null);
+  const firstName = user?.name ? user.name.split(" ")[0] : "";
+  $("home-greeting").textContent = firstName ? `Let's get moving, ${firstName}` : "Let's get moving";
+
   const profile = store.get("profile", {});
   const info = bmiInfo(profile.height, profile.weight);
   $("home-sub").textContent = info
@@ -611,6 +616,17 @@ function renderLog() {
   $("profile-line").textContent = info
     ? `Height ${profile.height} cm · Weight ${profile.weight} kg · BMI ${info.bmi} (${info.cat})`
     : "Not set";
+
+  // 계정 정보 표시
+  const user = store.get("user", null);
+  $("account-row").classList.toggle("hidden", !user);
+  if (user) {
+    $("account-name").textContent = user.name || "Google account";
+    $("account-email").textContent = user.email || "";
+    const avatar = $("account-avatar");
+    if (user.picture) { avatar.src = user.picture; avatar.style.display = ""; }
+    else avatar.style.display = "none";
+  }
 }
 $("btn-edit-profile").addEventListener("click", () => {
   const profile = store.get("profile", {});
@@ -636,17 +652,50 @@ document.querySelectorAll("[data-back]").forEach((b) =>
     BACK_TARGET[view]?.();
   }));
 
+// ---------- 로그인 ----------
+function enterApp() {
+  if (store.get("onboarded", false)) {
+    showView("v-shell");
+    showTab("home");
+  } else {
+    showView("v-onboard");
+  }
+}
+
+function onSignedIn(user) {
+  store.set("user", user);
+  enterApp();
+}
+
+function showLogin() {
+  showView("v-login");
+  const configured = initGoogleSignIn($("gsi-btn"), onSignedIn);
+  if (!configured) {
+    // 클라이언트 ID 미설정: 안내 + 개발용 우회 버튼 표시
+    $("login-note").classList.remove("hidden");
+    $("btn-dev-skip").classList.remove("hidden");
+  }
+}
+
+$("btn-dev-skip").addEventListener("click", () =>
+  onSignedIn({ name: "Guest", email: "", picture: "" }));
+
+$("btn-signout").addEventListener("click", () => {
+  googleSignOut();
+  localStorage.removeItem("fitform:user");
+  showLogin();
+});
+
 // ---------- 부트스트랩 ----------
 // 영어 UI 전환 마이그레이션: 이전 버전이 저장한 한국어 분석 결과 제거 (1회)
 if (!store.get("migratedEn", false)) {
   localStorage.removeItem("fitform:posture");
   store.set("migratedEn", true);
 }
-if (store.get("onboarded", false)) {
-  showView("v-shell");
-  showTab("home");
+if (store.get("user", null)) {
+  enterApp();
 } else {
-  showView("v-onboard");
+  showLogin();
 }
 getLandmarker().catch((e) => console.warn("포즈 모델 사전 로딩 실패(사용 시 재시도):", e));
 loadPostureModel().then((m) => {
