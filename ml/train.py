@@ -77,7 +77,27 @@ def main():
     ml_pred = model.predict(X_test)
     ml_acc = accuracy_score(y_test, ml_pred)
     print(f"[Random Forest] 정확도: {ml_acc:.3f} {cv_txt}")
-    print(f"\n=== 발표용 핵심 수치: 규칙 기반 {rule_acc:.1%} → ML {ml_acc:.1%} ===\n")
+
+    # --- XGBoost (모델 선택 근거용 비교 실험) ---
+    # 배포는 RF로 함: 트리를 JSON으로 덤프해 브라우저에서 그대로 추론 가능.
+    # XGBoost가 유의미하게 높게 나오면 배포 방식 재검토할 것.
+    xgb_acc = None
+    try:
+        from xgboost import XGBClassifier
+        from sklearn.preprocessing import LabelEncoder
+
+        le = LabelEncoder().fit(y)
+        xgb = XGBClassifier(n_estimators=200, max_depth=5, learning_rate=0.1,
+                            eval_metric="mlogloss", random_state=42)
+        xgb.fit(X_train, le.transform(y_train))
+        xgb_acc = accuracy_score(le.transform(y_test), xgb.predict(X_test))
+        print(f"[XGBoost]       정확도: {xgb_acc:.3f}")
+    except ImportError:
+        print("[XGBoost] 미설치 — 비교 생략 (pip install xgboost)")
+
+    xgb_txt = f", XGBoost {xgb_acc:.1%}" if xgb_acc is not None else ""
+    print(f"\n=== 발표용 핵심 수치: 규칙 기반 {rule_acc:.1%} → Random Forest {ml_acc:.1%}{xgb_txt} ===")
+    print("    (배포 모델: Random Forest — 트리 JSON 덤프로 브라우저 온디바이스 추론)\n")
 
     print("Confusion Matrix (행=실제, 열=예측):")
     labels = sorted(y.unique())
