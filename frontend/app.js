@@ -330,14 +330,14 @@ function demoPostureItems() {
       desc: "Your head sits forward of your shoulders (forward head posture)" },
     { key: "roundShoulder", name: "Shoulder Alignment", value: "18", unit: "%", status: "warn",
       desc: "Your shoulders roll forward (rounded shoulders)" },
-    { key: "trunk", name: "Torso Tilt", value: "12", unit: "°", status: "warn",
-      desc: "Your torso leans noticeably — watch your spine alignment" },
+    { key: "trunk", name: "Torso Tilt", value: "4", unit: "°", status: "ok",
+      desc: "You're standing nice and tall" },
     { key: "shoulderTilt", name: "Shoulder Level", value: "6.4", unit: "%", status: "warn",
       desc: "One shoulder sits higher than the other" },
     { key: "pelvisTilt", name: "Pelvis Level", value: "5.8", unit: "%", status: "warn",
       desc: "One hip sits higher than the other" },
-    { key: "legAlign", name: "Leg Alignment", value: "0.68", unit: "", status: "warn",
-      desc: "Your knees tend to cave inward" },
+    { key: "legAlign", name: "Leg Alignment", value: "1.06", unit: "", status: "ok",
+      desc: "Knees and ankles line up well" },
   ];
 }
 
