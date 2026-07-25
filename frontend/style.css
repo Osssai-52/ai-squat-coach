@@ -49,15 +49,15 @@ body {
 
 /* 모든 화면 공통: 상단 왼쪽 로고 바 */
 #brand-bar {
-  height: 48px;
-  display: flex; align-items: center; gap: 8px;
+  height: 60px;
+  display: flex; align-items: center; gap: 10px;
   padding: 0 16px;
 }
-#brand-bar img { width: 30px; height: 30px; border-radius: 8px; }
-#brand-bar span { font-weight: 800; font-size: 1rem; letter-spacing: -0.01em; color: var(--accent); }
+#brand-bar img { width: 42px; height: 42px; border-radius: 11px; }
+#brand-bar span { font-weight: 800; font-size: 1.15rem; letter-spacing: -0.01em; color: var(--accent); }
 #brand-bar em { font-style: normal; color: var(--orange); }
 
-.view { min-height: calc(100dvh - 48px); display: flex; flex-direction: column; }
+.view { min-height: calc(100dvh - 60px); display: flex; flex-direction: column; }
 .hidden { display: none !important; }
 .sub { color: var(--sub); font-size: 0.9rem; }
 .small { font-size: 0.8rem; }
@@ -145,7 +145,7 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 /* 체형 분석 전: 진입 카드 2개가 화면을 채우도록 */
 #tab-home.home-empty {
   display: flex; flex-direction: column;
-  min-height: calc(100dvh - 48px - 68px);
+  min-height: calc(100dvh - 60px - 68px);
 }
 #tab-home.home-empty .entry-card { flex: 1; }
 .tabbar {
@@ -181,6 +181,7 @@ h2.section-title { font-size: 1.02rem; margin: 20px 4px 10px; }
 .pill.ok { background: #e5f5ec; color: #0b7a4b; }
 .pill.warn { background: var(--orange-soft); color: #b04616; }
 
+#reco-section { margin-bottom: 16px; }
 .reco-list { display: flex; flex-direction: column; gap: 10px; }
 .reco-card {
   background: var(--card); border-radius: var(--radius); padding: 16px 18px;
