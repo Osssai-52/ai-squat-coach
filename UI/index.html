@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>BodyBuddy</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- 시작 스플래시: 로고가 가운데 등장 후 상단 브랜드 바 위치로 이동 -->
+  <div id="splash">
+    <img id="splash-logo" src="logo.png" onerror="this.onerror=null;this.src='logo.svg'" alt="" />
+  </div>
+
+  <!-- 모든 화면 공통 상단 로고 (기능 화면에서는 숨김) -->
+  <div id="brand-bar">
+    <img src="logo.png" onerror="this.onerror=null;this.src='logo.svg'" alt="BodyBuddy logo" />
+    <span>Body<em>Buddy</em></span>
+  </div>
+
+  <!-- ========== Onboarding ========== -->
+  <section id="v-onboard" class="view hidden">
+    <div class="onboard-inner">
+      <h1>Workouts that fit your body,<br/>starting with a posture scan</h1>
+      <p class="sub">Adding your info makes the analysis more accurate. Feel free to skip.</p>
+
+      <div class="field-group">
+        <label class="field">
+          <span>Height</span>
+          <div class="input-wrap"><input id="in-height" type="number" inputmode="decimal" placeholder="170" /><em>cm</em></div>
+        </label>
+        <label class="field">
+          <span>Weight</span>
+          <div class="input-wrap"><input id="in-weight" type="number" inputmode="decimal" placeholder="65" /><em>kg</em></div>
+        </label>
+        <div id="bmi-line" class="bmi-line hidden"></div>
+      </div>
+
+      <button id="btn-onboard-start" class="btn primary big">Get Started</button>
+      <button id="btn-onboard-skip" class="btn text">Skip for now</button>
+    </div>
+  </section>
+
+  <!-- ========== Tab shell ========== -->
+  <section id="v-shell" class="view hidden">
+    <!-- Home tab -->
+    <main id="tab-home" class="tab-page">
+      <header class="page-head">
+        <h1>Let's get moving</h1>
+        <p id="home-sub" class="sub">Scan your posture and get workouts made for you</p>
+      </header>
+
+      <button id="card-scan" class="card entry-card">
+        <b>Posture Scan + Workout Picks</b>
+        <p>Two photos — front and side — to check your alignment and get workouts made for you</p>
+        <span class="entry-go">Start Scan ›</span>
+      </button>
+
+      <div id="today-card" class="card hidden">
+        <div class="sub small">Today's posture</div>
+        <div id="today-head" class="today-head"></div>
+        <p id="today-desc" class="sub"></p>
+        <div id="summary-chips" class="chip-row"></div>
+        <button id="btn-reanalyze" class="btn secondary">Rescan</button>
+      </div>
+
+      <div id="reco-section" class="hidden">
+        <h2 class="section-title">Recommended for You</h2>
+        <div id="reco-list" class="reco-list"></div>
+      </div>
+
+      <button id="card-quick" class="card entry-card quick">
+        <b>Just Work Out</b>
+        <p>Skip the scan and jump straight into exercises</p>
+        <span class="entry-go orange">Browse Exercises ›</span>
+      </button>
+    </main>
+
+    <!-- History tab -->
+    <main id="tab-log" class="tab-page hidden">
+      <header class="page-head"><h1>History</h1><p class="sub">Your scans and workouts in one place</p></header>
+
+      <div id="progress-card" class="card hidden">
+        <div class="card-head"><b>Your progress</b></div>
+        <div id="progress-main" class="progress-main"></div>
+        <p id="progress-sub" class="sub"></p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>Posture Scan</b><span id="log-posture-date" class="sub small"></span></div>
+        <ul id="log-posture-list" class="metric-list"><li class="empty">No scans yet</li></ul>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>Form Progress</b><span class="sub small">good-form reps per session</span></div>
+        <div id="trend-chart" class="trend"><p class="empty">Complete a squat session to see this</p></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>Workout Sessions</b></div>
+        <ul id="session-list" class="session-list"><li class="empty">No workouts yet</li></ul>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>My Info</b><button id="btn-edit-profile" class="btn secondary small-btn">Edit</button></div>
+        <div id="profile-line" class="sub">Not set</div>
+      </div>
+    </main>
+
+    <nav class="tabbar">
+      <button class="tab-btn on" data-tab="home">
+        <svg viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.5Z"/></svg>
+        <span>Workout</span>
+      </button>
+      <button class="tab-btn" data-tab="log">
+        <svg viewBox="0 0 24 24"><path d="M5 3h14a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm3 5h8M8 12h8M8 16h5" fill="none" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>History</span>
+      </button>
+    </nav>
+  </section>
+
+  <!-- ========== Posture capture ========== -->
+  <section id="v-capture" class="view hidden">
+    <header class="top-nav">
+      <button class="btn back" data-back>‹</button>
+      <b id="capture-title">Posture Scan 1/2</b>
+    </header>
+    <div class="capture-stage">
+      <video id="cap-video" autoplay playsinline muted></video>
+      <svg id="cap-guide" class="cap-guide" viewBox="0 0 200 360" aria-hidden="true">
+        <path id="guide-front" d="M100 28a16 16 0 1 0 0.1 0 M100 46 v10 M70 66 q30 -14 60 0 l8 60 -14 4 -8 -44 v70 l10 160 -18 0 -8 -120 -8 120 -18 0 10 -160 v-70 l-8 44 -14 -4 8 -60"
+              fill="none" stroke-dasharray="6 6" />
+        <path id="guide-side" class="hidden" d="M104 28a15 15 0 1 0 0.1 0 M102 46 l-2 10 M96 60 q22 4 20 30 l-4 46 6 90 8 118 -16 0 -6 -110 -6 110 -14 0 8 -122 2 -86 q-4 -50 2 -76"
+              fill="none" stroke-dasharray="6 6" />
+      </svg>
+      <div id="cap-hint" class="cap-hint">Stand facing the camera, matching the guide</div>
+      <div id="cap-toast" class="toast hidden"></div>
+    </div>
+    <div class="capture-ctrl">
+      <p id="cap-desc" class="sub center">Your whole body, head to toe, should be in frame</p>
+      <button id="btn-shoot" class="shutter" aria-label="Take photo"></button>
+    </div>
+  </section>
+
+  <!-- ========== Scan results ========== -->
+  <section id="v-result" class="view hidden">
+    <header class="top-nav"><button class="btn back" data-back>‹</button><b>Scan Results</b></header>
+    <div class="page-body">
+      <div id="result-hero" class="card hero-card"></div>
+      <ul id="result-list" class="metric-list card"></ul>
+      <p class="sub small center">Measurements vary with camera angle. Rescan in the same setup to track real changes.</p>
+      <button id="btn-to-reco" class="btn primary big">See My Workouts</button>
+    </div>
+  </section>
+
+  <!-- ========== Exercise library ========== -->
+  <section id="v-exlist" class="view hidden">
+    <header class="top-nav"><button class="btn back" data-back>‹</button><b>Exercises</b></header>
+    <div class="page-body">
+      <div id="exlist" class="reco-list"></div>
+    </div>
+  </section>
+
+  <!-- ========== Exercise detail ========== -->
+  <section id="v-exercise" class="view hidden">
+    <header class="top-nav"><button class="btn back" data-back>‹</button><b id="ex-title">Exercise</b></header>
+    <div class="page-body">
+      <div class="card">
+        <span id="ex-tag" class="tag"></span>
+        <p id="ex-summary" class="ex-summary"></p>
+        <p id="ex-reason" class="reco-reason hidden"></p>
+      </div>
+      <div class="card">
+        <div class="card-head"><b>How to do it</b></div>
+        <ol id="ex-steps" class="steps"></ol>
+        <div id="ex-dose" class="dose"></div>
+      </div>
+      <div id="live-block" class="hidden">
+        <button id="btn-live" class="btn primary big">Check My Form with Camera</button>
+        <p class="sub small center cam-note">Your camera is used only for real-time form tracking — nothing is recorded or uploaded.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Squat: setup ========== -->
+  <section id="v-squat-setup" class="view hidden">
+    <header class="top-nav"><button class="btn back" data-back>‹</button><b>Squat</b></header>
+    <div class="page-body center-col">
+      <div class="card setup-card">
+        <div class="setup-row">
+          <svg width="46" height="70" viewBox="0 0 52 76">
+            <circle cx="30" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/>
+            <path d="M30 17 L28 40 L20 56 L20 72 M28 40 L34 56 L34 72 M29 24 L38 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+          <div><b>Before you start</b><p class="sub">Set up your camera like this for the best tracking</p></div>
+        </div>
+        <ul class="checklist">
+          <li>Full body visible, head to toe</li>
+          <li>Stand 2–3 m from the camera</li>
+          <li>Stand at a 45° angle to the camera</li>
+          <li>Good, even lighting — avoid backlight</li>
+          <li>Keep the camera still</li>
+        </ul>
+      </div>
+      <div class="goal-select">
+        <div class="sub small">Target reps</div>
+        <div class="rep-goal">
+          <button class="chip" data-goal="5">5</button>
+          <button class="chip on" data-goal="10">10</button>
+          <button class="chip" data-goal="15">15</button>
+        </div>
+      </div>
+      <button id="btn-start-squat" class="btn primary big">Start Workout</button>
+      <div id="squat-status" class="sub small center"></div>
+    </div>
+  </section>
+
+  <!-- ========== Squat: workout ========== -->
+  <section id="v-workout" class="view hidden dark">
+    <div class="video-wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div id="feedback" class="feedback hidden"></div>
+      <div class="rep-hud">
+        <div><span id="rep-count" class="num">0</span><span id="rep-goal-display" class="den"> / 10</span></div>
+        <div id="squat-phase" class="phase">Ready</div>
+      </div>
+      <div id="rep-dots" class="rep-dots"></div>
+      <div class="workout-ctrl"><button id="btn-end" class="btn ghost">End Workout</button></div>
+      <button id="btn-debug" class="debug-toggle">⚙</button>
+      <div id="status" class="overlay-status"></div>
+      <aside id="debug-panel" class="debug-panel hidden">
+        <dl>
+          <dt>Squat depth</dt><dd id="hip-drop">–</dd>
+          <dt>Knee angle</dt><dd id="knee-angle">–</dd>
+          <dt>Hip angle</dt><dd id="hip-angle">–</dd>
+          <dt>Trunk lean</dt><dd id="trunk-lean">–</dd>
+          <dt>Foot angle</dt><dd id="foot-angle">–</dd>
+          <dt>Knee/ankle ratio</dt><dd id="knee-ratio">–</dd>
+          <dt>Engine</dt><dd id="engine">Rules v0</dd>
+        </dl>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ========== Squat: report ========== -->
+  <section id="v-report" class="view hidden">
+    <header class="top-nav"><b>Workout Results</b></header>
+    <div class="page-body">
+      <div id="report-summary" class="card report-summary"></div>
+
+      <div class="card">
+        <div class="card-head"><b>Form Breakdown</b></div>
+        <div id="dist-bar" class="dist-bar" role="img"></div>
+        <div id="dist-legend" class="legend"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><b>Rep by Rep</b></div>
+        <ul id="rep-list" class="rep-list"></ul>
+      </div>
+
+      <button id="btn-report-done" class="btn primary big">Done</button>
+    </div>
+  </section>
+
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
