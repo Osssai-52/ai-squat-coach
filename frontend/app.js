@@ -322,21 +322,22 @@ function setCaptureStep() {
     : "Full side view, with your whole body visible";
 }
 
-// 데모 각본: 굽은 등(어깨 말림)을 항상 포함한 고정 결과
+// 데모 각본: 전 항목 주의(빨간 불), 임계값을 확실히 넘되 현실적인 수치로
+// (임계값: 목 12% / 어깨 10% / 상체 8° / 수평 4.5% / 다리 0.75~1.45)
 function demoPostureItems() {
   return [
-    { key: "forwardHead", name: "Neck Alignment", value: "7", unit: "%", status: "ok",
-      desc: "Ears and shoulders are well aligned" },
-    { key: "roundShoulder", name: "Shoulder Alignment", value: "16", unit: "%", status: "warn",
+    { key: "forwardHead", name: "Neck Alignment", value: "21", unit: "%", status: "warn",
+      desc: "Your head sits forward of your shoulders (forward head posture)" },
+    { key: "roundShoulder", name: "Shoulder Alignment", value: "18", unit: "%", status: "warn",
       desc: "Your shoulders roll forward (rounded shoulders)" },
-    { key: "trunk", name: "Torso Tilt", value: "5", unit: "°", status: "ok",
-      desc: "You're standing nice and tall" },
-    { key: "shoulderTilt", name: "Shoulder Level", value: "1.8", unit: "%", status: "ok",
-      desc: "Shoulders are nearly level" },
-    { key: "pelvisTilt", name: "Pelvis Level", value: "2.1", unit: "%", status: "ok",
-      desc: "Hips are nearly level" },
-    { key: "legAlign", name: "Leg Alignment", value: "1.04", unit: "", status: "ok",
-      desc: "Knees and ankles line up well" },
+    { key: "trunk", name: "Torso Tilt", value: "12", unit: "°", status: "warn",
+      desc: "Your torso leans noticeably — watch your spine alignment" },
+    { key: "shoulderTilt", name: "Shoulder Level", value: "6.4", unit: "%", status: "warn",
+      desc: "One shoulder sits higher than the other" },
+    { key: "pelvisTilt", name: "Pelvis Level", value: "5.8", unit: "%", status: "warn",
+      desc: "One hip sits higher than the other" },
+    { key: "legAlign", name: "Leg Alignment", value: "0.68", unit: "", status: "warn",
+      desc: "Your knees tend to cave inward" },
   ];
 }
 
