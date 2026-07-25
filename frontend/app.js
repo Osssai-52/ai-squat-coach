@@ -1,4 +1,16 @@
 // BodyBuddy: 체형 분석 → 맞춤 운동 추천 → 스쿼트 실시간 자세 교정
+//
+// ⚠ 데모 하드코딩 브랜치 (demo-hardcoded) — 발표 시연용 각본 모드.
+// 카메라 화면·스켈레톤은 실제로 그리지만, 인식 타이밍과 판정 결과는 아래 각본대로 나온다.
+const DEMO = {
+  FRONT_DELAY: 4000,            // 체형 정면: 촬영 버튼 후 4초 뒤 인식
+  SIDE_DELAY: 3000,             // 체형 측면: 그로부터 3초 뒤 자동 인식
+  REP_FIRST: 5000,              // 스쿼트 첫 렙: 시작 5초 뒤
+  REP_SECOND: 5000,             // 두 번째 렙: +5초
+  REP_ALT: [3000, 4000],        // 이후 3초/4초 번갈아
+  LABELS: ["depth", "back", "knee", "depth", "heel"], // 판정 순서 (반복)
+  ANGLES: { depth: 131, back: 115, knee: 108, heel: 97 }, // 리포트용 무릎 각도
+};
 import { getLandmarker, computeSquatFeatures, PoseLandmarker, DrawingUtils, LM } from "./pose.js";
 import { validateFrame, analyzePosture, buildRecommendations, EXERCISES, initPostureML, isPostureML } from "./posture.js";
 import { loadPostureModel, predictPosture, predictPostureDetailed } from "./inference.js";
@@ -311,37 +323,45 @@ function setCaptureStep() {
     : "Full side view, with your whole body visible";
 }
 
-$("btn-shoot").addEventListener("click", async () => {
-  const video = $("cap-video");
-  if (!video.videoWidth) return;
+// 데모 각본: 굽은 등(어깨 말림)을 항상 포함한 고정 결과
+function demoPostureItems() {
+  return [
+    { key: "forwardHead", name: "Neck Alignment", value: "7", unit: "%", status: "ok",
+      desc: "Ears and shoulders are well aligned" },
+    { key: "roundShoulder", name: "Shoulder Alignment", value: "16", unit: "%", status: "warn",
+      desc: "Your shoulders roll forward (rounded shoulders)" },
+    { key: "trunk", name: "Torso Tilt", value: "5", unit: "°", status: "ok",
+      desc: "You're standing nice and tall" },
+    { key: "shoulderTilt", name: "Shoulder Level", value: "1.8", unit: "%", status: "ok",
+      desc: "Shoulders are nearly level" },
+    { key: "pelvisTilt", name: "Pelvis Level", value: "2.1", unit: "%", status: "ok",
+      desc: "Hips are nearly level" },
+    { key: "legAlign", name: "Leg Alignment", value: "1.04", unit: "", status: "ok",
+      desc: "Knees and ankles line up well" },
+  ];
+}
+
+// 데모 각본: 정면은 버튼 4초 뒤 인식, 측면은 그 뒤 3초 뒤 자동 인식
+$("btn-shoot").addEventListener("click", () => {
+  if ($("btn-shoot").disabled) return;
   $("btn-shoot").disabled = true;
-  try {
-    const landmarker = await getLandmarker();
-    const result = landmarker.detectForVideo(video, performance.now());
-    const lms = result.landmarks[0] ?? null;
-    const check = validateFrame(lms);
-    if (!check.ok) {
-      toast($("cap-toast"), check.msg);
-      return;
-    }
-    capture.lms[capture.step] = lms;
-    if (capture.step === "front") {
-      capture.step = "side";
-      setCaptureStep();
-      toast($("cap-toast"), "Great! Now let's get your side view");
-    } else {
+  toast($("cap-toast"), "Hold still…", DEMO.FRONT_DELAY);
+  setTimeout(() => {
+    capture.step = "side";
+    setCaptureStep();
+    toast($("cap-toast"), "Great! Now let's get your side view", DEMO.SIDE_DELAY);
+    setTimeout(() => {
       stopCapture();
-      const items = analyzePosture(capture.lms);
+      const items = demoPostureItems();
       store.set("posture", { date: new Date().toISOString(), items });
       store.set("scanCount", store.get("scanCount", 0) + 1);
       recordAttendance();
-      checkNewBadges(); // 스캔 뱃지는 조용히 해제 (History에서 확인)
+      checkNewBadges();
       renderResult(items);
       showView("v-result");
-    }
-  } finally {
-    $("btn-shoot").disabled = false;
-  }
+      $("btn-shoot").disabled = false;
+    }, DEMO.SIDE_DELAY);
+  }, DEMO.FRONT_DELAY);
 });
 
 function renderResult(items) {
@@ -587,23 +607,64 @@ document.querySelectorAll(".chip[data-goal]").forEach((chip) => {
   });
 });
 
+// ---------- 데모 각본: 렙 타이머 ----------
+// 첫 렙 5초 → 두 번째 5초 → 이후 3초/4초 번갈아, 판정은 LABELS 순서 반복
+let demoTimer = null;
+
+function demoRepDelay(index) {
+  if (index === 0) return DEMO.REP_FIRST;
+  if (index === 1) return DEMO.REP_SECOND;
+  return DEMO.REP_ALT[(index - 2) % DEMO.REP_ALT.length];
+}
+
+function scheduleDemoRep(index) {
+  demoTimer = setTimeout(() => {
+    // 내려가는 동작 연출
+    $("squat-phase").textContent = "Going down";
+    setTimeout(() => {
+      const label = DEMO.LABELS[index % DEMO.LABELS.length];
+      $("squat-phase").textContent = "Coming up";
+      showFeedback(label);
+      const jitter = Math.random() * 6 - 3;
+      updateRepDot(session.results.length, label);
+      session.results.push({ label, kneeAngle: DEMO.ANGLES[label] + jitter });
+      squat.reps = session.results.length;
+      $("rep-count").textContent = squat.reps;
+      setTimeout(() => { if (running) $("squat-phase").textContent = "Standing"; }, 900);
+
+      if (session.results.length >= session.goalReps) {
+        speak("Workout complete!");
+        setTimeout(endWorkout, 1200);
+        return;
+      }
+      scheduleDemoRep(index + 1);
+    }, 700);
+  }, demoRepDelay(index) - 700);
+}
+
 $("btn-start-squat").addEventListener("click", async () => {
   const btn = $("btn-start-squat");
   btn.disabled = true;
   try {
     $("squat-status").textContent = "Preparing the model…";
-    landmarker = await getLandmarker();
+    landmarker = await getLandmarker().catch(() => null);
     $("squat-status").textContent = "Connecting to camera…";
-    workoutStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 1280, height: 720 }, audio: false,
-    });
-    const video = $("video");
-    video.srcObject = workoutStream;
-    await new Promise((r) => (video.onloadedmetadata = r));
-    const canvas = $("overlay");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    drawer = new DrawingUtils(canvas.getContext("2d"));
+    // 데모 모드: 카메라가 없어도 각본은 진행 (화면만 검게 나옴)
+    try {
+      workoutStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720 }, audio: false,
+      });
+      const video = $("video");
+      video.srcObject = workoutStream;
+      await new Promise((r) => (video.onloadedmetadata = r));
+      const canvas = $("overlay");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      drawer = new DrawingUtils(canvas.getContext("2d"));
+    } catch (camErr) {
+      console.warn("camera unavailable, demo continues:", camErr);
+      workoutStream = null;
+    }
 
     session.results = [];
     session.pendingResult = null;
@@ -618,7 +679,8 @@ $("btn-start-squat").addEventListener("click", async () => {
     $("status").textContent = "Tracking your form";
     running = true;
     lastVideoTime = -1;
-    requestAnimationFrame(loop);
+    if (workoutStream && landmarker) requestAnimationFrame(loop); // 스켈레톤 표시용
+    scheduleDemoRep(0); // 판정은 각본 타이머가 담당
   } catch (err) {
     $("squat-status").textContent = `Error: ${err.message}`;
     console.error(err);
@@ -652,30 +714,8 @@ function loop() {
         : `${f.footAngle.toFixed(0)}° (cal ${calibrateFeatures(f).footAngle.toFixed(0)}°)`;
       $("knee-ratio").textContent = f.kneeAnkleRatio != null ? f.kneeAnkleRatio.toFixed(2) : "–";
 
-      const { bottomFeatures, repCompleted } = updatePhase(f, lms);
-      $("hip-drop").textContent = `${(squat.lastDrop * 100).toFixed(0)}%`;
-      const phaseLabel = { standing: "Standing", descending: "Going down", ascending: "Coming up" };
-      $("squat-phase").textContent = phaseLabel[squat.phase] ?? squat.phase;
-      $("rep-count").textContent = squat.reps;
-
-      if (bottomFeatures) {
-        const calibrated = calibrateFeatures(bottomFeatures);
-        const label = classifyPosture(calibrated);
-        session.pendingResult = { label, kneeAngle: bottomFeatures.kneeAngle };
-        showFeedback(label);
-        logRep(label, calibrated, bottomFeatures);
-      }
-      if (repCompleted) {
-        const r = session.pendingResult ?? { label: "good", kneeAngle: null };
-        session.pendingResult = null;
-        updateRepDot(session.results.length, r.label);
-        session.results.push(r);
-        if (session.results.length >= session.goalReps) {
-          speak("Workout complete!");
-          endWorkout();
-          return;
-        }
-      }
+      // 데모 각본 모드: 판정·카운트는 타이머가 담당, 여기선 스켈레톤·수치 표시만
+      $("hip-drop").textContent = `${(computeDrop(lms) * 100).toFixed(0)}%`;
     } else {
       smoothedLms = null;
       squat.baseGap = null;
@@ -687,6 +727,7 @@ function loop() {
 
 function endWorkout() {
   running = false;
+  clearTimeout(demoTimer);
   speechSynthesis?.cancel();
   clearTimeout(feedbackTimer);
   $("feedback").classList.add("hidden");
