@@ -6,10 +6,9 @@ const DEMO = {
   FRONT_DELAY: 4000,            // 체형 정면: 촬영 버튼 후 4초 뒤 인식
   SIDE_DELAY: 3000,             // 체형 측면: 그로부터 3초 뒤 자동 인식
   REP_FIRST: 5000,              // 스쿼트 첫 렙: 시작 5초 뒤
-  REP_SECOND: 5000,             // 두 번째 렙: +5초
   REP_ALT: [3000, 4000],        // 이후 3초/4초 번갈아
-  LABELS: ["depth", "back", "knee", "depth", "heel"], // 판정 순서 (반복)
-  ANGLES: { depth: 131, back: 115, knee: 108, heel: 97 }, // 리포트용 무릎 각도
+  LABELS: ["depth", "good", "knee", "back", "good"], // 판정 순서 (반복)
+  ANGLES: { depth: 131, good: 92, back: 115, knee: 108, heel: 97 }, // 리포트용 무릎 각도
 };
 import { getLandmarker, computeSquatFeatures, PoseLandmarker, DrawingUtils, LM } from "./pose.js";
 import { validateFrame, analyzePosture, buildRecommendations, EXERCISES, initPostureML, isPostureML } from "./posture.js";
@@ -613,8 +612,7 @@ let demoTimer = null;
 
 function demoRepDelay(index) {
   if (index === 0) return DEMO.REP_FIRST;
-  if (index === 1) return DEMO.REP_SECOND;
-  return DEMO.REP_ALT[(index - 2) % DEMO.REP_ALT.length];
+  return DEMO.REP_ALT[(index - 1) % DEMO.REP_ALT.length];
 }
 
 function scheduleDemoRep(index) {
