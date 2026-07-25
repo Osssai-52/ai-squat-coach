@@ -7,7 +7,7 @@ const DEMO = {
   SIDE_DELAY: 3000,             // 체형 측면: 그로부터 3초 뒤 자동 인식
   REP_FIRST: 5000,              // 스쿼트 첫 렙: 시작 5초 뒤
   REP_ALT: [3000, 4000],        // 이후 3초/4초 번갈아
-  LABELS: ["depth", "good", "knee", "back", "good"], // 판정 순서 (반복)
+  LABELS: ["depth", "knee", "back", "good", "good"], // 판정 순서 (반복)
   ANGLES: { depth: 131, good: 92, back: 115, knee: 108, heel: 97 }, // 리포트용 무릎 각도
 };
 import { getLandmarker, computeSquatFeatures, PoseLandmarker, DrawingUtils, LM } from "./pose.js";
