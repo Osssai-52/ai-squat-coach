@@ -11,13 +11,14 @@ const CONFIG = {
   TRUNK_LEAN_MAX: 45,
   HEEL_FOOT_ANGLE: 34,
   KNEE_RATIO_MIN: 0.65,
-  // 렙 감지: 엉덩이 하강 비율(서 있을 때 대비, 다리 길이로 정규화) 기준
-  // 무릎 각도는 45° 라이브에서 오판이 많아(몸 돌리기·걷기에도 급변) 렙 감지엔 쓰지 않음
-  DROP_ENTER: 0.10,        // 이만큼 내려가면 "내려가는 중" 시작
-  DROP_EXIT: 0.06,         // 이 아래로 올라오면 기립(렙 종료)
-  REP_MIN_DROP: 0.20,      // 최저점 하강이 이보다 얕으면 렙 미인정 (풀스쿼트 ~0.4, 하프 ~0.25)
-  BOTTOM_REBOUND: 0.02,    // 최저점에서 이만큼 반등하면 "올라오는 중"
-  STAND_STILL_DROP: 0.05,  // 이 이하일 때만 기준선(엉덩이 높이·다리 길이) 갱신
+  // 렙 감지: "엉덩이-무릎 세로 간격 ÷ 몸통 길이" 비율 기준 (스쿼트 깊이 progress)
+  // 같은 프레임 안의 관절 간 상대 간격이라 카메라와의 거리 변화에 영향받지 않음.
+  // progress 0 = 서 있음, 1 = 엉덩이가 무릎 높이까지 내려옴 (풀스쿼트 ~0.8-1.0, 하프 ~0.5)
+  DEPTH_ENTER: 0.20,       // 이만큼 내려가면 "내려가는 중" 시작
+  DEPTH_EXIT: 0.12,        // 이 아래로 올라오면 기립(렙 종료)
+  REP_MIN_PROGRESS: 0.45,  // 최저점이 이보다 얕으면 렙 미인정 (잡동작 차단)
+  BOTTOM_REBOUND: 0.04,    // 최저점에서 이만큼 반등하면 "올라오는 중"
+  STAND_STILL: 0.10,       // 이 이하일 때만 기준 간격 갱신
   LANDMARK_ALPHA: 0.4,
   // 발 각도 세션 캘리브레이션: 서 있을 때 기준선을 잡고, 판정 시
   // "학습 사진의 평발 평균(26°)" 기준으로 환산 — 카메라 세팅 차이에 의한 heel 오탐 방지
@@ -278,16 +279,15 @@ let feedbackTimer = null;
 const squat = {
   phase: "standing",
   reps: 0,
-  baseHipY: null,      // 서 있을 때 엉덩이 높이 (EMA)
-  legLen: null,        // 서 있을 때 엉덩이-발목 거리 (EMA, 정규화용)
-  maxDropThisRep: 0,   // 이번 렙 최대 하강 비율
+  baseGap: null,        // 서 있을 때 (무릎Y - 엉덩이Y)/몸통길이 기준 비율 (EMA)
+  maxDropThisRep: 0,    // 이번 렙 최대 깊이 progress
   bottomFeatures: null, // 최저점 프레임 피처 (여기서만 자세 판정)
   footBaseline: null,
   lastDrop: 0,          // 디버그 표시용
 };
 function resetSquat() {
   Object.assign(squat, {
-    phase: "standing", reps: 0, baseHipY: null, legLen: null,
+    phase: "standing", reps: 0, baseGap: null,
     maxDropThisRep: 0, bottomFeatures: null, footBaseline: null, lastDrop: 0,
   });
 }
@@ -319,24 +319,28 @@ function smoothLandmarks(lms) {
   return smoothedLms;
 }
 
-// lms(스무딩된 랜드마크)에서 엉덩이 하강 비율 계산 + 서 있을 때 기준선 갱신
+// 스쿼트 깊이 progress 계산: 엉덩이가 무릎 높이에 얼마나 가까워졌나 (0=서 있음, 1=무릎 높이)
+// 관절 간 상대 간격을 같은 프레임의 몸통 길이로 나눠서, 카메라와의 거리·위치 변화에 불변
 function computeDrop(lms) {
   const hipY = (lms[LM.L_HIP].y + lms[LM.R_HIP].y) / 2;
-  const ankleY = (lms[LM.L_ANKLE].y + lms[LM.R_ANKLE].y) / 2;
-  const legLen = Math.max(Math.abs(ankleY - hipY), 1e-3);
+  const kneeY = (lms[LM.L_KNEE].y + lms[LM.R_KNEE].y) / 2;
+  const shoulder = { x: (lms[LM.L_SHOULDER].x + lms[LM.R_SHOULDER].x) / 2,
+                     y: (lms[LM.L_SHOULDER].y + lms[LM.R_SHOULDER].y) / 2 };
+  const hip = { x: (lms[LM.L_HIP].x + lms[LM.R_HIP].x) / 2, y: hipY };
+  const torso = Math.max(Math.hypot(shoulder.x - hip.x, shoulder.y - hip.y), 1e-3);
 
-  if (squat.baseHipY == null || squat.legLen == null) {
-    squat.baseHipY = hipY;
-    squat.legLen = legLen;
+  const gap = (kneeY - hipY) / torso; // 서 있으면 ~0.8-1.1, 최저점에선 ~0
+
+  if (squat.baseGap == null) {
+    squat.baseGap = gap;
     return 0;
   }
-  const drop = (hipY - squat.baseHipY) / squat.legLen;
-  // 거의 서 있는 상태에서만 기준선 갱신 (앉는 중·이동 중 오염 방지)
-  if (squat.phase === "standing" && Math.abs(drop) < CONFIG.STAND_STILL_DROP) {
-    squat.baseHipY += 0.15 * (hipY - squat.baseHipY);
-    squat.legLen += 0.15 * (legLen - squat.legLen);
+  const progress = 1 - gap / squat.baseGap;
+  // 거의 서 있는 상태에서만 기준 간격 갱신 (앉는 중 오염 방지)
+  if (squat.phase === "standing" && Math.abs(progress) < CONFIG.STAND_STILL) {
+    squat.baseGap += 0.15 * (gap - squat.baseGap);
   }
-  return drop;
+  return progress;
 }
 
 function updatePhase(f, lms) {
@@ -344,12 +348,12 @@ function updatePhase(f, lms) {
   squat.lastDrop = drop;
   let bottomFeatures = null, repCompleted = false;
   // 충분히 앉았는지 (얕은 까딱임·잡동작은 렙/판정 대상이 아님)
-  const deepEnough = () => squat.maxDropThisRep >= CONFIG.REP_MIN_DROP;
+  const deepEnough = () => squat.maxDropThisRep >= CONFIG.REP_MIN_PROGRESS;
 
   switch (squat.phase) {
     case "standing":
       updateFootBaseline(f); // 서 있는 동안 발 각도 기준선 갱신
-      if (drop > CONFIG.DROP_ENTER) {
+      if (drop > CONFIG.DEPTH_ENTER) {
         squat.phase = "descending";
         squat.maxDropThisRep = drop;
         squat.bottomFeatures = { ...f };
@@ -367,7 +371,7 @@ function updatePhase(f, lms) {
       break;
     case "ascending":
       if (drop > squat.maxDropThisRep) squat.phase = "descending"; // 다시 내려감 (불완전 렙)
-      else if (drop < CONFIG.DROP_EXIT) {
+      else if (drop < CONFIG.DEPTH_EXIT) {
         squat.phase = "standing";
         if (deepEnough()) { squat.reps += 1; repCompleted = true; } // 얕으면 렙 미인정
         squat.maxDropThisRep = 0;
@@ -518,8 +522,7 @@ function loop() {
       }
     } else {
       smoothedLms = null;
-      squat.baseHipY = null; // 사람을 놓치면 기준선 재수집
-      squat.legLen = null;
+      squat.baseGap = null; // 사람을 놓치면 기준 간격 재수집
       $("status").textContent = "Stand at 45° with your whole body in frame";
     }
   }
