@@ -1,7 +1,7 @@
 // BodyBuddy: 체형 분석 → 맞춤 운동 추천 → 스쿼트 실시간 자세 교정
 import { getLandmarker, computeSquatFeatures, PoseLandmarker, DrawingUtils, LM } from "./pose.js";
 import { validateFrame, analyzePosture, buildRecommendations, EXERCISES, initPostureML, isPostureML } from "./posture.js";
-import { loadPostureModel, predictPosture } from "./inference.js";
+import { loadPostureModel, predictPosture, predictPostureDetailed } from "./inference.js";
 
 // ---------- 스쿼트 판정 설정 (팀 실측으로 튜닝) ----------
 // 임계값은 45° 실측 분포로 보정 (ml/train.py 상수와 동일 유지)
@@ -20,6 +20,9 @@ const CONFIG = {
   LANDMARK_ALPHA: 0.4,
   FOOT_ANGLE_REF: 26,
   BASELINE_ALPHA: 0.1,
+  // 오판 억제: ML이 오류를 선언하려면 트리 득표율이 이 이상이어야 함.
+  // 애매하면 조용히 good 처리 (데모에서 "정상인데 지적"이 최악의 오판이라서)
+  MIN_ERROR_CONFIDENCE: 0.5,
 };
 
 const CLASSES = {
@@ -514,12 +517,39 @@ function classifyRuleBased(f) {
   if (f.kneeAnkleRatio != null && f.kneeAnkleRatio < CONFIG.KNEE_RATIO_MIN) return "knee";
   return "good";
 }
+let lastConfidence = null; // 렙 기록용
 function classifyPosture(f) {
   if (postureModel) {
-    const label = predictPosture(postureModel, f);
-    if (label && CLASSES[label]) return label;
+    const p = predictPostureDetailed(postureModel, f);
+    if (p && CLASSES[p.label]) {
+      lastConfidence = p.share;
+      // 오류 판정인데 확신이 낮으면 조용히 good 처리 (오판 억제 게이트)
+      if (p.label !== "good" && p.share < CONFIG.MIN_ERROR_CONFIDENCE) return "good";
+      return p.label;
+    }
   }
+  lastConfidence = null;
   return classifyRuleBased(f);
+}
+
+// 렙별 기록: 리허설에서 라이브 피처 분포를 모아 임계값 튜닝에 사용.
+// 보는 법: 콘솔의 [rep] 로그, 또는 JSON.parse(localStorage.getItem("fitform:repLog"))
+function logRep(label, calibrated, raw) {
+  const round = (obj) => Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [k, v == null ? null : +v.toFixed(2)]));
+  const entry = {
+    t: new Date().toISOString(),
+    label,
+    confidence: lastConfidence == null ? null : +lastConfidence.toFixed(2),
+    maxDrop: +squat.maxDropThisRep.toFixed(3),
+    calibrated: round(calibrated),
+    raw: round(raw),
+    footBaseline: squat.footBaseline == null ? null : +squat.footBaseline.toFixed(1),
+  };
+  console.info("[rep]", entry);
+  const log = store.get("repLog", []);
+  log.push(entry);
+  store.set("repLog", log.slice(-200));
 }
 
 function speak(text) {
@@ -633,6 +663,7 @@ function loop() {
         const label = classifyPosture(calibrated);
         session.pendingResult = { label, kneeAngle: bottomFeatures.kneeAngle };
         showFeedback(label);
+        logRep(label, calibrated, bottomFeatures);
       }
       if (repCompleted) {
         const r = session.pendingResult ?? { label: "good", kneeAngle: null };

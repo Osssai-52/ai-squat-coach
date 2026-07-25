@@ -33,6 +33,11 @@ const KEY_MAP = {
 
 // f: computeFeatures() 결과. 반환: 클래스 라벨(다수결) 또는 null(피처 결측)
 export function predictPosture(model, f) {
+  return predictPostureDetailed(model, f)?.label ?? null;
+}
+
+// 라벨 + 확신도(다수결 득표율 0~1). 오판 억제 게이트용
+export function predictPostureDetailed(model, f) {
   const x = model.features.map((name) => f[KEY_MAP[name]]);
   if (x.some((v) => v == null)) return null;
   const votes = {};
@@ -44,5 +49,5 @@ export function predictPosture(model, f) {
   for (const [c, n] of Object.entries(votes)) {
     if (n > bestCount) { best = c; bestCount = n; }
   }
-  return best;
+  return { label: best, share: bestCount / model.trees.length, votes };
 }
