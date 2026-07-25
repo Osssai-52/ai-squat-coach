@@ -403,6 +403,27 @@ h2.section-title { font-size: 1.125rem; font-weight: 600; margin: 22px 4px 10px;
 
 #diagnosis p { font-size: 0.9rem; }
 
+/* 출석 뱃지 */
+.badge-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 8px; }
+.badge-item { text-align: center; }
+.badge-emoji {
+  width: 54px; height: 54px; border-radius: 50%;
+  background: var(--accent-soft);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.55rem; margin: 0 auto 5px;
+}
+.badge-item.locked .badge-emoji { background: var(--bg); filter: grayscale(1); opacity: 0.5; }
+.badge-item.locked .badge-name { color: var(--sub); }
+.badge-name { font-size: 0.7rem; font-weight: 700; line-height: 1.2; }
+.badge-progress { font-size: 0.65rem; color: var(--sub); }
+
+/* 새 뱃지 축하 (결과 화면) */
+.rs-badge {
+  margin-top: 10px; padding: 10px 14px; border-radius: 12px;
+  background: var(--orange-soft); color: var(--orange);
+  font-size: 0.875rem; font-weight: 700;
+}
+
 /* 결과 요약 카드 (핵심 피드백을 최상단에) */
 .report-summary .rs-head { font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; }
 .report-summary .rs-issue { font-size: 0.9375rem; margin-bottom: 2px; }

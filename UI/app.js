@@ -87,6 +87,91 @@ function runSplash() {
   }, 950);
 }
 
+// ---------- 출석 & 뱃지 (rendezvous 게이미피케이션 컨셉 이식) ----------
+// 출석 = 운동 세션 완료 또는 체형 스캔을 한 날 (로컬 날짜 기준)
+function todayKey(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function recordAttendance() {
+  const days = store.get("attendance", []);
+  const today = todayKey();
+  if (!days.includes(today)) {
+    days.push(today);
+    store.set("attendance", days);
+  }
+}
+// 연속 출석일: 오늘(안 했으면 어제)부터 하루씩 거슬러 올라가며 카운트
+function calcStreak(days) {
+  const set = new Set(days);
+  const d = new Date();
+  if (!set.has(todayKey(d))) d.setDate(d.getDate() - 1);
+  let streak = 0;
+  while (set.has(todayKey(d))) {
+    streak++;
+    d.setDate(d.getDate() - 1);
+  }
+  return streak;
+}
+
+function badgeStats() {
+  const sessions = store.get("sessions", []);
+  const days = store.get("attendance", []);
+  return {
+    sessionCount: sessions.length,
+    totalReps: sessions.reduce((a, s) => a + s.total, 0),
+    perfect: sessions.some((s) => s.total >= 5 && s.good === s.total),
+    days: days.length,
+    streak: calcStreak(days),
+    scanCount: store.get("scanCount", 0),
+  };
+}
+
+const BADGES = [
+  { key: "first-workout", emoji: "🎯", name: "First Step",   goal: 1,   prog: (s) => s.sessionCount, desc: "Complete your first workout" },
+  { key: "first-scan",    emoji: "🧭", name: "Self Aware",   goal: 1,   prog: (s) => s.scanCount,    desc: "Complete a posture scan" },
+  { key: "streak-3",      emoji: "🔥", name: "On a Roll",    goal: 3,   prog: (s) => s.streak,       desc: "3-day attendance streak" },
+  { key: "streak-7",      emoji: "⚡", name: "Unstoppable",  goal: 7,   prog: (s) => s.streak,       desc: "7-day attendance streak" },
+  { key: "days-10",       emoji: "📅", name: "Regular",      goal: 10,  prog: (s) => s.days,         desc: "10 active days" },
+  { key: "sessions-10",   emoji: "💪", name: "Committed",    goal: 10,  prog: (s) => s.sessionCount, desc: "10 workout sessions" },
+  { key: "reps-100",      emoji: "🏆", name: "Century Club", goal: 100, prog: (s) => s.totalReps,    desc: "100 total reps" },
+  { key: "perfect",       emoji: "🌟", name: "Perfect Set",  goal: 1,   prog: (s) => (s.perfect ? 1 : 0), desc: "Every rep good in one session (5+)" },
+];
+
+// 새로 획득한 뱃지 반환 + 획득 목록 저장
+function checkNewBadges() {
+  const stats = badgeStats();
+  const earnedBefore = new Set(store.get("badgesEarned", []));
+  const fresh = [];
+  for (const b of BADGES) {
+    if (b.prog(stats) >= b.goal && !earnedBefore.has(b.key)) {
+      earnedBefore.add(b.key);
+      fresh.push(b);
+    }
+  }
+  store.set("badgesEarned", [...earnedBefore]);
+  return fresh;
+}
+
+function renderBadges() {
+  const stats = badgeStats();
+  $("streak-line").textContent = stats.streak > 0
+    ? `🔥 ${stats.streak}-day streak` : "Work out to start a streak";
+  const grid = $("badge-grid");
+  grid.innerHTML = "";
+  for (const b of BADGES) {
+    const progress = Math.min(b.prog(stats), b.goal);
+    const earned = progress >= b.goal;
+    const item = document.createElement("div");
+    item.className = `badge-item${earned ? "" : " locked"}`;
+    item.title = b.desc;
+    item.innerHTML =
+      `<div class="badge-emoji">${b.emoji}</div>` +
+      `<div class="badge-name">${b.name}</div>` +
+      `<div class="badge-progress">${earned ? "Earned" : `${progress}/${b.goal}`}</div>`;
+    grid.appendChild(item);
+  }
+}
+
 // ---------- 온보딩 ----------
 function bmiInfo(h, w) {
   if (!h || !w) return null;
@@ -245,6 +330,9 @@ $("btn-shoot").addEventListener("click", async () => {
       stopCapture();
       const items = analyzePosture(capture.lms);
       store.set("posture", { date: new Date().toISOString(), items });
+      store.set("scanCount", store.get("scanCount", 0) + 1);
+      recordAttendance();
+      checkNewBadges(); // 스캔 뱃지는 조용히 해제 (History에서 확인)
       renderResult(items);
       showView("v-result");
     }
@@ -574,6 +662,7 @@ function endWorkout() {
   workoutStream?.getTracks().forEach((t) => t.stop());
   workoutStream = null;
 
+  let newBadges = [];
   if (session.results.length > 0) {
     const counts = {};
     for (const r of session.results) counts[r.label] = (counts[r.label] ?? 0) + 1;
@@ -585,8 +674,10 @@ function endWorkout() {
       counts,
     });
     store.set("sessions", sessions);
+    recordAttendance();
+    newBadges = checkNewBadges();
   }
-  renderReport();
+  renderReport(newBadges);
   showView("v-report");
 }
 $("btn-end").addEventListener("click", endWorkout);
@@ -606,7 +697,7 @@ function diagnose(counts, total) {
   return worst ? CLASSES[worst[0]].advice : "";
 }
 
-function renderReport() {
+function renderReport(newBadges = []) {
   const results = session.results;
   const total = results.length;
   const counts = {};
@@ -622,6 +713,9 @@ function renderReport() {
   }
   const tip = diagnose(counts, total);
   if (tip) html += `<div class="rs-tip">Try next time: ${tip}</div>`;
+  for (const b of newBadges) {
+    html += `<div class="rs-badge">🎉 New badge: ${b.emoji} ${b.name}</div>`;
+  }
   summary.innerHTML = html;
 
   // 자세 분포
@@ -750,6 +844,8 @@ function renderLog() {
   $("profile-line").textContent = info
     ? `Height ${profile.height} cm · Weight ${profile.weight} kg · BMI ${info.bmi} (${info.cat})`
     : "Not set";
+
+  renderBadges();
 }
 $("btn-edit-profile").addEventListener("click", () => {
   const profile = store.get("profile", {});
