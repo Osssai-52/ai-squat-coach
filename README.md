@@ -28,8 +28,10 @@
 
 ```bash
 cd frontend
-python -m http.server 8000
+python serve.py
 ```
+
+(`python -m http.server`도 되지만 브라우저가 JS를 캐시해서 수정이 반영 안 될 수 있음 — serve.py는 캐시를 끔)
 
 브라우저에서 http://localhost:8000 접속 → 카메라 허용 → 스켈레톤 + 관절 각도 실시간 표시.
 
@@ -59,17 +61,6 @@ copy models\posture_model.json ..\frontend\
 
 - 모델 JSON이 frontend/에 있으면 자동으로 ML 판정, 없으면 규칙 기반 폴백
 - 스쿼트 판정 엔진은 운동 화면 "⚙" 패널, 체형 판정 엔진은 브라우저 콘솔에서 확인
-
-## Google 로그인 설정 (1회, 팀 구글 계정 필요)
-
-코드는 완성돼 있고 **클라이언트 ID만 넣으면 활성화**됩니다. 미설정 상태에서는 개발용 "Continue without account" 버튼이 대신 표시됩니다.
-
-1. [console.cloud.google.com](https://console.cloud.google.com) → 새 프로젝트 생성
-2. API 및 서비스 → OAuth 동의 화면 → External → 앱 이름/이메일 입력 → **테스트 사용자에 팀원 전원 + 데모용 계정 추가** (누락 시 로그인 차단)
-3. 사용자 인증 정보 → OAuth 클라이언트 ID 만들기 → 유형 "웹 애플리케이션" → 승인된 JavaScript 원본에 `http://localhost:8000` 추가
-4. 발급된 `xxxx.apps.googleusercontent.com`을 [frontend/auth.js](frontend/auth.js)의 `GOOGLE_CLIENT_ID`에 붙여넣기
-
-⚠ 데모 주의: 인터넷 연결 필요. 데모 기기 주소가 localhost:8000이 아니면 그 주소도 원본에 추가할 것. 로그인이 말썽이면 auth.js의 ID를 잠시 비우면 우회 버튼으로 데모 가능.
 
 ## 기술 스택
 

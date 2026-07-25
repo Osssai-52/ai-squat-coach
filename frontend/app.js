@@ -1,8 +1,7 @@
-// 핏폼: 체형 분석 → 맞춤 운동 추천 → 스쿼트 실시간 자세 교정
+// BodyBuddy: 체형 분석 → 맞춤 운동 추천 → 스쿼트 실시간 자세 교정
 import { getLandmarker, computeSquatFeatures, PoseLandmarker, DrawingUtils, LM } from "./pose.js";
 import { validateFrame, analyzePosture, buildRecommendations, EXERCISES, initPostureML, isPostureML } from "./posture.js";
 import { loadPostureModel, predictPosture } from "./inference.js";
-import { initGoogleSignIn, googleSignOut } from "./auth.js";
 
 // ---------- 스쿼트 판정 설정 (팀 실측으로 튜닝) ----------
 // 임계값은 45° 실측 분포로 보정 (ml/train.py 상수와 동일 유지)
@@ -13,15 +12,12 @@ const CONFIG = {
   KNEE_RATIO_MIN: 0.65,
   // 렙 감지: "엉덩이-무릎 세로 간격 ÷ 몸통 길이" 비율 기준 (스쿼트 깊이 progress)
   // 같은 프레임 안의 관절 간 상대 간격이라 카메라와의 거리 변화에 영향받지 않음.
-  // progress 0 = 서 있음, 1 = 엉덩이가 무릎 높이까지 내려옴 (풀스쿼트 ~0.8-1.0, 하프 ~0.5)
-  DEPTH_ENTER: 0.20,       // 이만큼 내려가면 "내려가는 중" 시작
-  DEPTH_EXIT: 0.12,        // 이 아래로 올라오면 기립(렙 종료)
-  REP_MIN_PROGRESS: 0.45,  // 최저점이 이보다 얕으면 렙 미인정 (잡동작 차단)
-  BOTTOM_REBOUND: 0.04,    // 최저점에서 이만큼 반등하면 "올라오는 중"
-  STAND_STILL: 0.10,       // 이 이하일 때만 기준 간격 갱신
+  DEPTH_ENTER: 0.20,
+  DEPTH_EXIT: 0.12,
+  REP_MIN_PROGRESS: 0.45,
+  BOTTOM_REBOUND: 0.04,
+  STAND_STILL: 0.10,
   LANDMARK_ALPHA: 0.4,
-  // 발 각도 세션 캘리브레이션: 서 있을 때 기준선을 잡고, 판정 시
-  // "학습 사진의 평발 평균(26°)" 기준으로 환산 — 카메라 세팅 차이에 의한 heel 오탐 방지
   FOOT_ANGLE_REF: 26,
   BASELINE_ALPHA: 0.1,
 };
@@ -30,9 +26,9 @@ const CLASSES = {
   good:  { name: "Good form",     banner: "Great form!",           color: "var(--c-good)",
            advice: "" },
   depth: { name: "Shallow depth", banner: "Go a little deeper!",   color: "var(--c-depth)",
-           advice: "Sink down until your thighs are parallel to the floor" },
+           advice: "Lower your hips until your thighs are parallel to the floor" },
   back:  { name: "Rounded back",  banner: "Chest up!",             color: "var(--c-back)",
-           advice: "Look forward and open your chest to keep your back straight" },
+           advice: "Keep your chest open and look forward" },
   heel:  { name: "Heel lift",     banner: "Keep your heels down!", color: "var(--c-heel)",
            advice: "Keep your weight through mid-foot and heels" },
   knee:  { name: "Knees caving",  banner: "Push your knees out!",  color: "var(--c-knee)",
@@ -48,11 +44,15 @@ const store = {
   set(key, value) { localStorage.setItem("fitform:" + key, JSON.stringify(value)); },
 };
 
-// ---------- DOM ----------
+// ---------- DOM / 화면 전환 ----------
 const $ = (id) => document.getElementById(id);
-const VIEWS = ["v-login", "v-onboard", "v-shell", "v-capture", "v-result", "v-exlist", "v-exercise", "v-squat-setup", "v-workout", "v-report"];
+const VIEWS = ["v-onboard", "v-shell", "v-capture", "v-result", "v-exlist", "v-exercise", "v-squat-setup", "v-workout", "v-report"];
+// 브랜드 바는 온보딩·홈에서만 (기능 화면은 화면 제목 + 뒤로가기 중심)
+const BRAND_VIEWS = new Set(["v-onboard", "v-shell"]);
+
 function showView(id) {
   for (const v of VIEWS) $(v).classList.toggle("hidden", v !== id);
+  $("brand-bar").classList.toggle("hidden", !BRAND_VIEWS.has(id));
 }
 function showTab(name) {
   $("tab-home").classList.toggle("hidden", name !== "home");
@@ -66,6 +66,25 @@ function toast(el, msg, ms = 2200) {
   el.classList.remove("hidden");
   clearTimeout(el._t);
   el._t = setTimeout(() => el.classList.add("hidden"), ms);
+}
+
+// ---------- 시작 스플래시 ----------
+function runSplash() {
+  const splash = $("splash");
+  const img = $("splash-logo");
+  requestAnimationFrame(() => splash.classList.add("in"));
+  setTimeout(() => {
+    const targetEl = document.querySelector("#brand-bar img");
+    if (targetEl && !$("brand-bar").classList.contains("hidden")) {
+      const t = targetEl.getBoundingClientRect();
+      const c = img.getBoundingClientRect();
+      const dx = t.left + t.width / 2 - (c.left + c.width / 2);
+      const dy = t.top + t.height / 2 - (c.top + c.height / 2);
+      img.style.transform = `translate(${dx}px, ${dy}px) scale(${t.width / c.width})`;
+    }
+    splash.classList.add("fly");
+    setTimeout(() => splash.remove(), 600);
+  }, 950);
 }
 
 // ---------- 온보딩 ----------
@@ -99,11 +118,12 @@ $("btn-onboard-start").addEventListener("click", () => finishOnboard(true));
 $("btn-onboard-skip").addEventListener("click", () => finishOnboard(false));
 
 // ---------- 홈 탭 ----------
-function renderHome() {
-  const user = store.get("user", null);
-  const firstName = user?.name ? user.name.split(" ")[0] : "";
-  $("home-greeting").textContent = firstName ? `Let's get moving, ${firstName}` : "Let's get moving";
+function currentRecommendations() {
+  const posture = store.get("posture", null);
+  return posture ? buildRecommendations(posture.items) : [];
+}
 
+function renderHome() {
   const profile = store.get("profile", {});
   const info = bmiInfo(profile.height, profile.weight);
   $("home-sub").textContent = info
@@ -111,29 +131,38 @@ function renderHome() {
     : "Scan your posture and get workouts made for you";
 
   const posture = store.get("posture", null);
-  $("tab-home").classList.toggle("home-empty", !posture); // 분석 전엔 진입 카드 2개가 화면을 채움
-  $("card-scan").classList.toggle("hidden", !!posture);   // 분석 후엔 요약+추천이 스캔 카드를 대체
-  $("posture-summary").classList.toggle("hidden", !posture);
+  $("tab-home").classList.toggle("home-empty", !posture);
+  $("card-scan").classList.toggle("hidden", !!posture);
+  $("today-card").classList.toggle("hidden", !posture);
   $("reco-section").classList.toggle("hidden", !posture);
   if (!posture) return;
+
+  // 오늘의 자세 요약: 무엇이 문제인지 문장으로
+  const warns = posture.items.filter((i) => i.status === "warn");
+  $("today-head").textContent = warns.length === 0
+    ? "Looking great!"
+    : `${warns.length} area${warns.length > 1 ? "s" : ""} need${warns.length > 1 ? "" : "s"} attention`;
+  $("today-desc").textContent = warns.length === 0
+    ? "All measured areas are in a good range. Keep it up!"
+    : `${warns.map((w) => w.name).join(" and ")} need${warns.length > 1 ? "" : "s"} the most work.`;
 
   const chips = $("summary-chips");
   chips.innerHTML = "";
   for (const item of posture.items) {
     const pill = document.createElement("span");
     pill.className = `pill ${item.status}`;
-    pill.textContent = `${item.name}: ${item.status === "ok" ? "OK" : "Watch"}`;
+    pill.textContent = `${item.name}: ${item.status === "ok" ? "Good" : "Needs attention"}`;
     chips.appendChild(pill);
   }
 
   const list = $("reco-list");
   list.innerHTML = "";
-  for (const pick of buildRecommendations(posture.items)) {
+  for (const pick of currentRecommendations()) {
     const ex = EXERCISES[pick.key];
     const card = document.createElement("button");
     card.className = "reco-card";
     card.innerHTML =
-      `<div class="t"><b>${ex.name}${ex.live ? ' <span class="live-badge">LIVE</span>' : ""}</b>` +
+      `<div class="t"><b>${ex.name}${ex.live ? ' <span class="badge live">Live form check</span>' : ""}</b>` +
       `<p>${pick.reason}</p></div><span class="arrow">›</span>`;
     card.addEventListener("click", () => openExercise(pick.key, "home"));
     list.appendChild(card);
@@ -142,14 +171,18 @@ function renderHome() {
 
 // ---------- 운동 라이브러리 (바로 운동하기 경로) ----------
 function renderExerciseList() {
+  const recoKeys = new Set(currentRecommendations().map((p) => p.key));
   const list = $("exlist");
   list.innerHTML = "";
   for (const [key, ex] of Object.entries(EXERCISES)) {
+    const badges =
+      (recoKeys.has(key) ? ' <span class="badge reco">Recommended</span>' : "") +
+      (ex.live ? ' <span class="badge live">Live form check</span>' : "");
     const card = document.createElement("button");
     card.className = "reco-card";
     card.innerHTML =
-      `<div class="t"><b>${ex.name}${ex.live ? ' <span class="live-badge">LIVE</span>' : ""}</b>` +
-      `<p>${ex.tag}</p></div><span class="arrow">›</span>`;
+      `<div class="t"><b>${ex.name}${badges}</b>` +
+      `<p>${ex.tag} · ${ex.time}</p></div><span class="arrow">›</span>`;
     card.addEventListener("click", () => openExercise(key, "list"));
     list.appendChild(card);
   }
@@ -244,14 +277,20 @@ $("btn-to-reco").addEventListener("click", () => { showView("v-shell"); showTab(
 
 // ---------- 운동 상세 ----------
 let currentExercise = null;
-let exerciseOrigin = "home"; // "home"(추천 목록에서) | "list"(운동 라이브러리에서) — 뒤로가기 목적지
+let exerciseOrigin = "home"; // "home"(추천에서) | "list"(라이브러리에서) — 뒤로가기 목적지
 function openExercise(key, origin = "home") {
   currentExercise = key;
   exerciseOrigin = origin;
   const ex = EXERCISES[key];
   $("ex-title").textContent = ex.name;
-  $("ex-tag").textContent = ex.tag;
+  $("ex-tag").textContent = `${ex.tag} · ${ex.time}`;
   $("ex-summary").textContent = ex.summary;
+
+  // 추천된 운동이면 이유를 함께 표시
+  const pick = currentRecommendations().find((p) => p.key === key);
+  $("ex-reason").classList.toggle("hidden", !pick);
+  if (pick) $("ex-reason").textContent = `Recommended for you — ${pick.reason.toLowerCase()}`;
+
   const steps = $("ex-steps");
   steps.innerHTML = "";
   for (const s of ex.steps) {
@@ -260,7 +299,7 @@ function openExercise(key, origin = "home") {
     steps.appendChild(li);
   }
   $("ex-dose").textContent = ex.dose;
-  $("btn-live").classList.toggle("hidden", !ex.live);
+  $("live-block").classList.toggle("hidden", !ex.live);
   showView("v-exercise");
 }
 $("btn-live").addEventListener("click", () => showView("v-squat-setup"));
@@ -280,10 +319,10 @@ const squat = {
   phase: "standing",
   reps: 0,
   baseGap: null,        // 서 있을 때 (무릎Y - 엉덩이Y)/몸통길이 기준 비율 (EMA)
-  maxDropThisRep: 0,    // 이번 렙 최대 깊이 progress
+  maxDropThisRep: 0,
   bottomFeatures: null, // 최저점 프레임 피처 (여기서만 자세 판정)
   footBaseline: null,
-  lastDrop: 0,          // 디버그 표시용
+  lastDrop: 0,
 };
 function resetSquat() {
   Object.assign(squat, {
@@ -319,7 +358,7 @@ function smoothLandmarks(lms) {
   return smoothedLms;
 }
 
-// 스쿼트 깊이 progress 계산: 엉덩이가 무릎 높이에 얼마나 가까워졌나 (0=서 있음, 1=무릎 높이)
+// 스쿼트 깊이 progress: 엉덩이가 무릎 높이에 얼마나 가까워졌나 (0=서 있음, 1=무릎 높이)
 // 관절 간 상대 간격을 같은 프레임의 몸통 길이로 나눠서, 카메라와의 거리·위치 변화에 불변
 function computeDrop(lms) {
   const hipY = (lms[LM.L_HIP].y + lms[LM.R_HIP].y) / 2;
@@ -329,14 +368,13 @@ function computeDrop(lms) {
   const hip = { x: (lms[LM.L_HIP].x + lms[LM.R_HIP].x) / 2, y: hipY };
   const torso = Math.max(Math.hypot(shoulder.x - hip.x, shoulder.y - hip.y), 1e-3);
 
-  const gap = (kneeY - hipY) / torso; // 서 있으면 ~0.8-1.1, 최저점에선 ~0
+  const gap = (kneeY - hipY) / torso;
 
   if (squat.baseGap == null) {
     squat.baseGap = gap;
     return 0;
   }
   const progress = 1 - gap / squat.baseGap;
-  // 거의 서 있는 상태에서만 기준 간격 갱신 (앉는 중 오염 방지)
   if (squat.phase === "standing" && Math.abs(progress) < CONFIG.STAND_STILL) {
     squat.baseGap += 0.15 * (gap - squat.baseGap);
   }
@@ -347,12 +385,11 @@ function updatePhase(f, lms) {
   const drop = computeDrop(lms);
   squat.lastDrop = drop;
   let bottomFeatures = null, repCompleted = false;
-  // 충분히 앉았는지 (얕은 까딱임·잡동작은 렙/판정 대상이 아님)
   const deepEnough = () => squat.maxDropThisRep >= CONFIG.REP_MIN_PROGRESS;
 
   switch (squat.phase) {
     case "standing":
-      updateFootBaseline(f); // 서 있는 동안 발 각도 기준선 갱신
+      updateFootBaseline(f);
       if (drop > CONFIG.DEPTH_ENTER) {
         squat.phase = "descending";
         squat.maxDropThisRep = drop;
@@ -366,14 +403,14 @@ function updatePhase(f, lms) {
       }
       if (drop < squat.maxDropThisRep - CONFIG.BOTTOM_REBOUND) {
         squat.phase = "ascending";
-        if (deepEnough()) bottomFeatures = squat.bottomFeatures; // 얕으면 판정 생략
+        if (deepEnough()) bottomFeatures = squat.bottomFeatures;
       }
       break;
     case "ascending":
-      if (drop > squat.maxDropThisRep) squat.phase = "descending"; // 다시 내려감 (불완전 렙)
+      if (drop > squat.maxDropThisRep) squat.phase = "descending";
       else if (drop < CONFIG.DEPTH_EXIT) {
         squat.phase = "standing";
-        if (deepEnough()) { squat.reps += 1; repCompleted = true; } // 얕으면 렙 미인정
+        if (deepEnough()) { squat.reps += 1; repCompleted = true; }
         squat.maxDropThisRep = 0;
         squat.bottomFeatures = null;
       }
@@ -522,7 +559,7 @@ function loop() {
       }
     } else {
       smoothedLms = null;
-      squat.baseGap = null; // 사람을 놓치면 기준 간격 재수집
+      squat.baseGap = null;
       $("status").textContent = "Stand at 45° with your whole body in frame";
     }
   }
@@ -537,7 +574,6 @@ function endWorkout() {
   workoutStream?.getTracks().forEach((t) => t.stop());
   workoutStream = null;
 
-  // 세션 저장
   if (session.results.length > 0) {
     const counts = {};
     for (const r of session.results) counts[r.label] = (counts[r.label] ?? 0) + 1;
@@ -575,14 +611,20 @@ function renderReport() {
   const total = results.length;
   const counts = {};
   for (const r of results) counts[r.label] = (counts[r.label] ?? 0) + 1;
-
-  $("report-good").textContent = counts.good ?? 0;
-  $("report-total").textContent = total;
-
+  const good = counts.good ?? 0;
   const errors = Object.entries(counts).filter(([l]) => l !== "good").sort((a, b) => b[1] - a[1]);
-  $("report-top-error").innerHTML = errors.length
-    ? `${CLASSES[errors[0][0]].name} <small>×${errors[0][1]}</small>` : "None 👍";
 
+  // 결과 요약: 결론형 피드백을 최상단에
+  const summary = $("report-summary");
+  let html = `<div class="rs-head">${good} of ${total} rep${total !== 1 ? "s" : ""} had good form</div>`;
+  if (errors.length > 0) {
+    html += `<div class="rs-issue">Main issue: <b>${CLASSES[errors[0][0]].name}</b> · occurred ${errors[0][1]} time${errors[0][1] > 1 ? "s" : ""}</div>`;
+  }
+  const tip = diagnose(counts, total);
+  if (tip) html += `<div class="rs-tip">Try next time: ${tip}</div>`;
+  summary.innerHTML = html;
+
+  // 자세 분포
   const bar = $("dist-bar");
   const legend = $("dist-legend");
   bar.innerHTML = "";
@@ -605,18 +647,19 @@ function renderReport() {
     legend.appendChild(span);
   }
 
-  const diag = diagnose(counts, total);
-  $("diagnosis").classList.toggle("hidden", !diag);
-  $("diagnosis-text").textContent = diag;
-
+  // 렙별 카드: Issue와 Tip이 먼저, 각도는 보조 정보
   const list = $("rep-list");
   list.innerHTML = "";
   results.forEach((r, i) => {
+    const c = CLASSES[r.label];
     const li = document.createElement("li");
-    const angle = r.kneeAngle != null ? `Knee ${r.kneeAngle.toFixed(0)}°` : "";
-    const lab = r.label === "good" ? "Good form" : `${CLASSES[r.label].name} — ${CLASSES[r.label].advice}`;
-    li.innerHTML = `<span class="n">#${i + 1}</span><i style="background:${CLASSES[r.label].color}"></i>` +
-      `<span class="lab">${lab}</span><span class="ang">${angle}</span>`;
+    li.className = "rep-card";
+    const isGood = r.label === "good";
+    li.innerHTML =
+      `<div class="rep-card-head"><b>Rep ${i + 1}</b><i style="background:${c.color}"></i>` +
+      `<span class="rep-issue${isGood ? " good" : ""}">${isGood ? "Good form" : c.name}</span></div>` +
+      (isGood ? "" : `<p class="rep-tip">Tip: ${c.advice}.</p>`) +
+      (r.kneeAngle != null ? `<span class="rep-meta">Knee angle ${r.kneeAngle.toFixed(0)}°</span>` : "");
     list.appendChild(li);
   });
 }
@@ -628,8 +671,36 @@ function fmtDate(iso) {
   const d = new Date(iso);
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+const pct = (s) => (s.total ? Math.round((s.good / s.total) * 100) : 0);
 
 function renderLog() {
+  const sessions = store.get("sessions", []);
+
+  // 진행 요약: 좋아지고 있는지 + 계속 고쳐야 할 것
+  const progressCard = $("progress-card");
+  progressCard.classList.toggle("hidden", sessions.length === 0);
+  if (sessions.length > 0) {
+    if (sessions.length >= 2) {
+      const first = pct(sessions[0]);
+      const last = pct(sessions[sessions.length - 1]);
+      $("progress-main").innerHTML =
+        `Good-form reps: ${first}% → <span class="${last >= first ? "up" : ""}">${last}%</span>`;
+    } else {
+      $("progress-main").textContent = `First session: ${pct(sessions[0])}% good form`;
+    }
+    // 전체 세션에서 가장 잦은 오류
+    const totals = {};
+    for (const s of sessions) {
+      for (const [k, v] of Object.entries(s.counts ?? {})) {
+        if (k !== "good") totals[k] = (totals[k] ?? 0) + v;
+      }
+    }
+    const worst = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+    $("progress-sub").textContent = worst
+      ? `Needs work: ${CLASSES[worst[0]].name} — ${CLASSES[worst[0]].advice.toLowerCase()}.`
+      : sessions.length >= 2 ? "No recurring issues. Keep it up!" : "Complete another session to see your trend.";
+  }
+
   const posture = store.get("posture", null);
   const pList = $("log-posture-list");
   pList.innerHTML = "";
@@ -646,19 +717,18 @@ function renderLog() {
     pList.innerHTML = '<li class="empty">No scans yet</li>';
   }
 
-  const sessions = store.get("sessions", []);
   const trend = $("trend-chart");
   trend.innerHTML = "";
   if (sessions.length === 0) {
     trend.innerHTML = '<p class="empty">Complete a squat session to see this</p>';
   } else {
     for (const s of sessions.slice(-7)) {
-      const pct = s.total ? Math.round((s.good / s.total) * 100) : 0;
+      const p = pct(s);
       const col = document.createElement("div");
       col.className = "bar-col";
       col.innerHTML =
-        `<div class="bar-track"><div class="bar-fill" style="height:${pct}%"></div></div>` +
-        `<span class="bar-label">${pct}%</span>`;
+        `<div class="bar-track"><div class="bar-fill" style="height:${p}%"></div></div>` +
+        `<span class="bar-label">${p}%</span>`;
       trend.appendChild(col);
     }
   }
@@ -680,17 +750,6 @@ function renderLog() {
   $("profile-line").textContent = info
     ? `Height ${profile.height} cm · Weight ${profile.weight} kg · BMI ${info.bmi} (${info.cat})`
     : "Not set";
-
-  // 계정 정보 표시
-  const user = store.get("user", null);
-  $("account-row").classList.toggle("hidden", !user);
-  if (user) {
-    $("account-name").textContent = user.name || "Google account";
-    $("account-email").textContent = user.email || "";
-    const avatar = $("account-avatar");
-    if (user.picture) { avatar.src = user.picture; avatar.style.display = ""; }
-    else avatar.style.display = "none";
-  }
 }
 $("btn-edit-profile").addEventListener("click", () => {
   const profile = store.get("profile", {});
@@ -709,7 +768,7 @@ const BACK_TARGET = {
   "v-result": () => { showView("v-shell"); showTab("home"); },
   "v-exlist": () => { showView("v-shell"); showTab("home"); },
   "v-exercise": () => {
-    if (exerciseOrigin === "list") showView("v-exlist");
+    if (exerciseOrigin === "list") { renderExerciseList(); showView("v-exlist"); }
     else { showView("v-shell"); showTab("home"); }
   },
   "v-squat-setup": () => showView("v-exercise"),
@@ -720,52 +779,15 @@ document.querySelectorAll("[data-back]").forEach((b) =>
     BACK_TARGET[view]?.();
   }));
 
-// ---------- 로그인 ----------
-function enterApp() {
-  if (store.get("onboarded", false)) {
-    showView("v-shell");
-    showTab("home");
-  } else {
-    showView("v-onboard");
-  }
-}
-
-function onSignedIn(user) {
-  store.set("user", user);
-  enterApp();
-}
-
-function showLogin() {
-  showView("v-login");
-  const configured = initGoogleSignIn($("gsi-btn"), onSignedIn);
-  if (!configured) {
-    // 클라이언트 ID 미설정: 안내 + 개발용 우회 버튼 표시
-    $("login-note").classList.remove("hidden");
-    $("btn-dev-skip").classList.remove("hidden");
-  }
-}
-
-$("btn-dev-skip").addEventListener("click", () =>
-  onSignedIn({ name: "Guest", email: "", picture: "" }));
-
-$("btn-signout").addEventListener("click", () => {
-  googleSignOut();
-  localStorage.removeItem("fitform:user");
-  showLogin();
-});
-
 // ---------- 부트스트랩 ----------
-// 영어 UI 전환 마이그레이션: 이전 버전이 저장한 한국어 분석 결과 제거 (1회)
-if (!store.get("migratedEn", false)) {
-  localStorage.removeItem("fitform:posture");
-  store.set("migratedEn", true);
-}
-if (store.get("user", null)) {
-  enterApp();
+if (store.get("onboarded", false)) {
+  showView("v-shell");
+  showTab("home");
 } else {
-  showLogin();
+  showView("v-onboard");
 }
-getLandmarker().catch((e) => console.warn("포즈 모델 사전 로딩 실패(사용 시 재시도):", e));
+runSplash();
+getLandmarker().catch((e) => console.warn("pose model preload failed (will retry on use):", e));
 loadPostureModel().then((m) => {
   postureModel = m;
   $("engine").textContent = m ? `ML (${m.trees.length} trees)` : "Rules v0";

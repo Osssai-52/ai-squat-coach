@@ -6,31 +6,20 @@
   <title>BodyBuddy</title>
   <link rel="icon" href="logo.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="style.css" />
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <div id="app">
 
-  <!-- 모든 화면 공통: 상단 왼쪽 로고 -->
+  <!-- 시작 스플래시: 로고가 가운데 등장 후 상단 브랜드 바 위치로 이동 -->
+  <div id="splash">
+    <img id="splash-logo" src="logo.png" onerror="this.onerror=null;this.src='logo.svg'" alt="" />
+  </div>
+
+  <!-- 모든 화면 공통 상단 로고 (기능 화면에서는 숨김) -->
   <div id="brand-bar">
     <img src="logo.png" onerror="this.onerror=null;this.src='logo.svg'" alt="BodyBuddy logo" />
     <span>Body<em>Buddy</em></span>
   </div>
-
-  <!-- ========== Sign in ========== -->
-  <section id="v-login" class="view hidden">
-    <div class="onboard-inner login-inner">
-      <img class="login-logo" src="logo.png" onerror="this.onerror=null;this.src='logo.svg'" alt="" />
-      <h1>Meet your body's<br/>new best friend</h1>
-      <p class="sub">Sign in to keep your scans and progress in one place</p>
-      <div id="gsi-btn" class="gsi-btn"></div>
-      <p id="login-note" class="sub small hidden">
-        Google sign-in isn't configured yet.<br/>
-        Add your OAuth client ID in <b>frontend/auth.js</b> (see the comments there).
-      </p>
-      <button id="btn-dev-skip" class="btn text hidden">Continue without account (dev)</button>
-    </div>
-  </section>
 
   <!-- ========== Onboarding ========== -->
   <section id="v-onboard" class="view hidden">
@@ -57,10 +46,10 @@
 
   <!-- ========== Tab shell ========== -->
   <section id="v-shell" class="view hidden">
-    <!-- Home (workout) tab -->
+    <!-- Home tab -->
     <main id="tab-home" class="tab-page">
       <header class="page-head">
-        <h1 id="home-greeting">Let's get moving</h1>
+        <h1>Let's get moving</h1>
         <p id="home-sub" class="sub">Scan your posture and get workouts made for you</p>
       </header>
 
@@ -70,12 +59,12 @@
         <span class="entry-go">Start Scan ›</span>
       </button>
 
-      <div id="posture-summary" class="card hidden">
-        <div class="card-head">
-          <b>My Posture</b>
-          <button id="btn-reanalyze" class="btn text small">Rescan</button>
-        </div>
+      <div id="today-card" class="card hidden">
+        <div class="sub small">Today's posture</div>
+        <div id="today-head" class="today-head"></div>
+        <p id="today-desc" class="sub"></p>
         <div id="summary-chips" class="chip-row"></div>
+        <button id="btn-reanalyze" class="btn secondary">Rescan</button>
       </div>
 
       <div id="reco-section" class="hidden">
@@ -94,6 +83,12 @@
     <main id="tab-log" class="tab-page hidden">
       <header class="page-head"><h1>History</h1><p class="sub">Your scans and workouts in one place</p></header>
 
+      <div id="progress-card" class="card hidden">
+        <div class="card-head"><b>Your progress</b></div>
+        <div id="progress-main" class="progress-main"></div>
+        <p id="progress-sub" class="sub"></p>
+      </div>
+
       <div class="card">
         <div class="card-head"><b>Posture Scan</b><span id="log-posture-date" class="sub small"></span></div>
         <ul id="log-posture-list" class="metric-list"><li class="empty">No scans yet</li></ul>
@@ -110,13 +105,8 @@
       </div>
 
       <div class="card">
-        <div class="card-head"><b>My Info</b><button id="btn-edit-profile" class="btn text small">Edit</button></div>
-        <div id="account-row" class="account-row hidden">
-          <img id="account-avatar" alt="" />
-          <div><b id="account-name"></b><div id="account-email" class="sub small"></div></div>
-        </div>
+        <div class="card-head"><b>My Info</b><button id="btn-edit-profile" class="btn secondary small-btn">Edit</button></div>
         <div id="profile-line" class="sub">Not set</div>
-        <button id="btn-signout" class="btn text small signout">Sign out</button>
       </div>
     </main>
 
@@ -166,7 +156,7 @@
     </div>
   </section>
 
-  <!-- ========== Exercise library (quick workout) ========== -->
+  <!-- ========== Exercise library ========== -->
   <section id="v-exlist" class="view hidden">
     <header class="top-nav"><button class="btn back" data-back>‹</button><b>Exercises</b></header>
     <div class="page-body">
@@ -181,13 +171,17 @@
       <div class="card">
         <span id="ex-tag" class="tag"></span>
         <p id="ex-summary" class="ex-summary"></p>
+        <p id="ex-reason" class="reco-reason hidden"></p>
       </div>
       <div class="card">
         <div class="card-head"><b>How to do it</b></div>
         <ol id="ex-steps" class="steps"></ol>
         <div id="ex-dose" class="dose"></div>
       </div>
-      <button id="btn-live" class="btn primary big hidden">Start Live Form Check</button>
+      <div id="live-block" class="hidden">
+        <button id="btn-live" class="btn primary big">Check My Form with Camera</button>
+        <p class="sub small center cam-note">Your camera is used only for real-time form tracking — nothing is recorded or uploaded.</p>
+      </div>
     </div>
   </section>
 
@@ -195,12 +189,21 @@
   <section id="v-squat-setup" class="view hidden">
     <header class="top-nav"><button class="btn back" data-back>‹</button><b>Squat</b></header>
     <div class="page-body center-col">
-      <div class="card stance-card">
-        <svg width="46" height="70" viewBox="0 0 52 76">
-          <circle cx="30" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/>
-          <path d="M30 17 L28 40 L20 56 L20 72 M28 40 L34 56 L34 72 M29 24 L38 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-        </svg>
-        <p><b>Stand at 45° to the camera</b><br/>Your whole body needs to be in view for accurate tracking</p>
+      <div class="card setup-card">
+        <div class="setup-row">
+          <svg width="46" height="70" viewBox="0 0 52 76">
+            <circle cx="30" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/>
+            <path d="M30 17 L28 40 L20 56 L20 72 M28 40 L34 56 L34 72 M29 24 L38 38" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+          <div><b>Before you start</b><p class="sub">Set up your camera like this for the best tracking</p></div>
+        </div>
+        <ul class="checklist">
+          <li>Full body visible, head to toe</li>
+          <li>Stand 2–3 m from the camera</li>
+          <li>Stand at a 45° angle to the camera</li>
+          <li>Good, even lighting — avoid backlight</li>
+          <li>Keep the camera still</li>
+        </ul>
       </div>
       <div class="goal-select">
         <div class="sub small">Target reps</div>
@@ -247,26 +250,12 @@
   <section id="v-report" class="view hidden">
     <header class="top-nav"><b>Workout Results</b></header>
     <div class="page-body">
-      <div class="hero-row">
-        <div class="card stat-tile">
-          <div class="sub small">Good form</div>
-          <div class="value good"><span id="report-good">0</span><small> / <span id="report-total">0</span> reps</small></div>
-        </div>
-        <div class="card stat-tile">
-          <div class="sub small">Most frequent issue</div>
-          <div id="report-top-error" class="value small-value">None</div>
-        </div>
-      </div>
+      <div id="report-summary" class="card report-summary"></div>
 
       <div class="card">
         <div class="card-head"><b>Form Breakdown</b></div>
         <div id="dist-bar" class="dist-bar" role="img"></div>
         <div id="dist-legend" class="legend"></div>
-      </div>
-
-      <div id="diagnosis" class="card hidden">
-        <div class="card-head"><b>Coach's Note</b></div>
-        <p id="diagnosis-text"></p>
       </div>
 
       <div class="card">

@@ -145,7 +145,7 @@ export function analyzePosture({ front, side }) {
 // ---------- Exercise library ----------
 export const EXERCISES = {
   squat: {
-    name: "Squat", tag: "Legs · Full body", live: true,
+    name: "Squat", tag: "Legs · Full body", time: "5 min", live: true,
     summary: "The all-in-one move for legs and core — with real-time form analysis.",
     steps: [
       "Stand with feet shoulder-width apart, toes slightly out",
@@ -157,7 +157,7 @@ export const EXERCISES = {
     dose: "10 reps × 3 sets, rest 60s between sets",
   },
   plank: {
-    name: "Plank", tag: "Core stability",
+    name: "Plank", tag: "Core stability", time: "3 min",
     summary: "A static core hold that builds the strength to keep your spine tall.",
     steps: [
       "Place your elbows under your shoulders and lie face down",
@@ -168,7 +168,7 @@ export const EXERCISES = {
     dose: "Start with 30s × 3 sets, build up gradually",
   },
   bandPullApart: {
-    name: "Band Pull-Apart", tag: "Upper back · Shoulders",
+    name: "Band Pull-Apart", tag: "Upper back · Shoulders", time: "4 min",
     summary: "Strengthens the upper back to pull rounded shoulders back where they belong.",
     steps: [
       "Hold a band at shoulder width, arms extended forward",
@@ -179,7 +179,7 @@ export const EXERCISES = {
     dose: "15 reps × 3 sets",
   },
   wallAngel: {
-    name: "Wall Angel", tag: "Shoulder mobility · Posture",
+    name: "Wall Angel", tag: "Shoulder mobility · Posture", time: "4 min",
     summary: "Slide your arms along a wall to restore shoulder and upper-back alignment.",
     steps: [
       "Stand with your head, back, and hips against a wall",
@@ -190,7 +190,7 @@ export const EXERCISES = {
     dose: "10 reps × 3 sets",
   },
   hipBridge: {
-    name: "Hip Bridge", tag: "Glutes · Pelvic stability",
+    name: "Hip Bridge", tag: "Glutes · Pelvic stability", time: "4 min",
     summary: "Wakes up the glutes and stabilizes the pelvis.",
     steps: [
       "Lie on your back, knees bent, feet hip-width apart",
@@ -201,7 +201,7 @@ export const EXERCISES = {
     dose: "12 reps × 3 sets",
   },
   clamshell: {
-    name: "Clamshell", tag: "Glutes · Knee alignment",
+    name: "Clamshell", tag: "Glutes · Knee alignment", time: "4 min",
     summary: "Targets the outer glutes that keep your knees from caving inward.",
     steps: [
       "Lie on your side with knees bent at 45°",
@@ -212,7 +212,7 @@ export const EXERCISES = {
     dose: "15 reps per side × 3 sets",
   },
   sidePlank: {
-    name: "Side Plank", tag: "Obliques · Balance",
+    name: "Side Plank", tag: "Obliques · Balance", time: "3 min",
     summary: "A side core hold that evens out left-right imbalances.",
     steps: [
       "Lie on your side with your elbow under your shoulder",
