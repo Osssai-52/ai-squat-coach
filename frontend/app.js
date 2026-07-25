@@ -1,5 +1,5 @@
 // 핏폼: 체형 분석 → 맞춤 운동 추천 → 스쿼트 실시간 자세 교정
-import { getLandmarker, computeSquatFeatures, PoseLandmarker, DrawingUtils } from "./pose.js";
+import { getLandmarker, computeSquatFeatures, PoseLandmarker, DrawingUtils, LM } from "./pose.js";
 import { validateFrame, analyzePosture, buildRecommendations, EXERCISES, initPostureML, isPostureML } from "./posture.js";
 import { loadPostureModel, predictPosture } from "./inference.js";
 import { initGoogleSignIn, googleSignOut } from "./auth.js";
@@ -11,9 +11,13 @@ const CONFIG = {
   TRUNK_LEAN_MAX: 45,
   HEEL_FOOT_ANGLE: 34,
   KNEE_RATIO_MIN: 0.65,
-  STANDING_KNEE_ANGLE: 160,
-  BOTTOM_ENTER_DELTA: 5,
-  REP_MIN_DEPTH: 140,      // 최저 무릎 각도가 이보다 크면 렙으로 인정 안 함 (까딱임 무시)
+  // 렙 감지: 엉덩이 하강 비율(서 있을 때 대비, 다리 길이로 정규화) 기준
+  // 무릎 각도는 45° 라이브에서 오판이 많아(몸 돌리기·걷기에도 급변) 렙 감지엔 쓰지 않음
+  DROP_ENTER: 0.10,        // 이만큼 내려가면 "내려가는 중" 시작
+  DROP_EXIT: 0.06,         // 이 아래로 올라오면 기립(렙 종료)
+  REP_MIN_DROP: 0.20,      // 최저점 하강이 이보다 얕으면 렙 미인정 (풀스쿼트 ~0.4, 하프 ~0.25)
+  BOTTOM_REBOUND: 0.02,    // 최저점에서 이만큼 반등하면 "올라오는 중"
+  STAND_STILL_DROP: 0.05,  // 이 이하일 때만 기준선(엉덩이 높이·다리 길이) 갱신
   LANDMARK_ALPHA: 0.4,
   // 발 각도 세션 캘리브레이션: 서 있을 때 기준선을 잡고, 판정 시
   // "학습 사진의 평발 평균(26°)" 기준으로 환산 — 카메라 세팅 차이에 의한 heel 오탐 방지
@@ -271,9 +275,21 @@ let workoutStream = null;
 let smoothedLms = null;
 let feedbackTimer = null;
 
-const squat = { phase: "standing", prevKnee: null, minKneeThisRep: 999, bottomFeatures: null, reps: 0, footBaseline: null };
+const squat = {
+  phase: "standing",
+  reps: 0,
+  baseHipY: null,      // 서 있을 때 엉덩이 높이 (EMA)
+  legLen: null,        // 서 있을 때 엉덩이-발목 거리 (EMA, 정규화용)
+  maxDropThisRep: 0,   // 이번 렙 최대 하강 비율
+  bottomFeatures: null, // 최저점 프레임 피처 (여기서만 자세 판정)
+  footBaseline: null,
+  lastDrop: 0,          // 디버그 표시용
+};
 function resetSquat() {
-  Object.assign(squat, { phase: "standing", prevKnee: null, minKneeThisRep: 999, bottomFeatures: null, reps: 0, footBaseline: null });
+  Object.assign(squat, {
+    phase: "standing", reps: 0, baseHipY: null, legLen: null,
+    maxDropThisRep: 0, bottomFeatures: null, footBaseline: null, lastDrop: 0,
+  });
 }
 
 // 서 있는 동안 발 각도 기준선 수집 (EMA)
@@ -303,35 +319,60 @@ function smoothLandmarks(lms) {
   return smoothedLms;
 }
 
-function updatePhase(f) {
-  const k = f.kneeAngle;
-  if (k == null) return { bottomFeatures: null, repCompleted: false };
-  const delta = squat.prevKnee == null ? 0 : k - squat.prevKnee;
-  squat.prevKnee = k;
+// lms(스무딩된 랜드마크)에서 엉덩이 하강 비율 계산 + 서 있을 때 기준선 갱신
+function computeDrop(lms) {
+  const hipY = (lms[LM.L_HIP].y + lms[LM.R_HIP].y) / 2;
+  const ankleY = (lms[LM.L_ANKLE].y + lms[LM.R_ANKLE].y) / 2;
+  const legLen = Math.max(Math.abs(ankleY - hipY), 1e-3);
+
+  if (squat.baseHipY == null || squat.legLen == null) {
+    squat.baseHipY = hipY;
+    squat.legLen = legLen;
+    return 0;
+  }
+  const drop = (hipY - squat.baseHipY) / squat.legLen;
+  // 거의 서 있는 상태에서만 기준선 갱신 (앉는 중·이동 중 오염 방지)
+  if (squat.phase === "standing" && Math.abs(drop) < CONFIG.STAND_STILL_DROP) {
+    squat.baseHipY += 0.15 * (hipY - squat.baseHipY);
+    squat.legLen += 0.15 * (legLen - squat.legLen);
+  }
+  return drop;
+}
+
+function updatePhase(f, lms) {
+  const drop = computeDrop(lms);
+  squat.lastDrop = drop;
   let bottomFeatures = null, repCompleted = false;
-  // 충분히 앉았는지 (얕은 까딱임은 렙/판정 대상이 아님)
-  const deepEnough = () => squat.minKneeThisRep <= CONFIG.REP_MIN_DEPTH;
+  // 충분히 앉았는지 (얕은 까딱임·잡동작은 렙/판정 대상이 아님)
+  const deepEnough = () => squat.maxDropThisRep >= CONFIG.REP_MIN_DROP;
 
   switch (squat.phase) {
     case "standing":
       updateFootBaseline(f); // 서 있는 동안 발 각도 기준선 갱신
-      if (k < CONFIG.STANDING_KNEE_ANGLE - 10) {
-        squat.phase = "descending"; squat.minKneeThisRep = k; squat.bottomFeatures = null;
+      if (drop > CONFIG.DROP_ENTER) {
+        squat.phase = "descending";
+        squat.maxDropThisRep = drop;
+        squat.bottomFeatures = { ...f };
       }
       break;
     case "descending":
-      if (k < squat.minKneeThisRep) { squat.minKneeThisRep = k; squat.bottomFeatures = { ...f }; }
-      if (delta > CONFIG.BOTTOM_ENTER_DELTA) {
+      if (drop > squat.maxDropThisRep) {
+        squat.maxDropThisRep = drop;
+        squat.bottomFeatures = { ...f };
+      }
+      if (drop < squat.maxDropThisRep - CONFIG.BOTTOM_REBOUND) {
         squat.phase = "ascending";
         if (deepEnough()) bottomFeatures = squat.bottomFeatures; // 얕으면 판정 생략
       }
       break;
     case "ascending":
-      if (k >= CONFIG.STANDING_KNEE_ANGLE) {
+      if (drop > squat.maxDropThisRep) squat.phase = "descending"; // 다시 내려감 (불완전 렙)
+      else if (drop < CONFIG.DROP_EXIT) {
         squat.phase = "standing";
         if (deepEnough()) { squat.reps += 1; repCompleted = true; } // 얕으면 렙 미인정
+        squat.maxDropThisRep = 0;
+        squat.bottomFeatures = null;
       }
-      if (delta < -CONFIG.BOTTOM_ENTER_DELTA) squat.phase = "descending";
       break;
   }
   return { bottomFeatures, repCompleted };
@@ -452,7 +493,8 @@ function loop() {
         : `${f.footAngle.toFixed(0)}° (cal ${calibrateFeatures(f).footAngle.toFixed(0)}°)`;
       $("knee-ratio").textContent = f.kneeAnkleRatio != null ? f.kneeAnkleRatio.toFixed(2) : "–";
 
-      const { bottomFeatures, repCompleted } = updatePhase(f);
+      const { bottomFeatures, repCompleted } = updatePhase(f, lms);
+      $("hip-drop").textContent = `${(squat.lastDrop * 100).toFixed(0)}%`;
       const phaseLabel = { standing: "Standing", descending: "Going down", ascending: "Coming up" };
       $("squat-phase").textContent = phaseLabel[squat.phase] ?? squat.phase;
       $("rep-count").textContent = squat.reps;
@@ -476,7 +518,8 @@ function loop() {
       }
     } else {
       smoothedLms = null;
-      squat.prevKnee = null;
+      squat.baseHipY = null; // 사람을 놓치면 기준선 재수집
+      squat.legLen = null;
       $("status").textContent = "Stand at 45° with your whole body in frame";
     }
   }
